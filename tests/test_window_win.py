@@ -55,3 +55,28 @@ def test_capture_window_rgb_vectorized_parsing(monkeypatch):
     assert np.all(arr[:, :, 0] == 200)
     assert np.all(arr[:, :, 1] == 150)
     assert np.all(arr[:, :, 2] == 100)
+
+
+def test_is_roblox_process_or_title(monkeypatch):
+    """Verifies process name and window title detection logic for Roblox."""
+    # Scenario 1: Standard Roblox process name
+    monkeypatch.setattr(window_win, "get_process_name", lambda hwnd: "robloxplayerbeta.exe")
+    assert window_win.is_roblox_process_or_title(1, "Roblox") is True
+
+    # Scenario 2: Bloxstrap launcher process name
+    monkeypatch.setattr(window_win, "get_process_name", lambda hwnd: "bloxstrap.exe")
+    assert window_win.is_roblox_process_or_title(1, "Roblox") is True
+
+    # Scenario 3: Process name empty (elevated process permission issue) but title is Roblox
+    monkeypatch.setattr(window_win, "get_process_name", lambda hwnd: "")
+    assert window_win.is_roblox_process_or_title(1, "Roblox") is True
+    assert window_win.is_roblox_process_or_title(1, "Roblox Player") is True
+
+    # Scenario 4: Chrome tab titled Roblox (should NOT match)
+    monkeypatch.setattr(window_win, "get_process_name", lambda hwnd: "chrome.exe")
+    assert window_win.is_roblox_process_or_title(1, "Roblox - Google Chrome") is False
+
+    # Scenario 5: Title has no Roblox keyword
+    monkeypatch.setattr(window_win, "get_process_name", lambda hwnd: "robloxplayerbeta.exe")
+    assert window_win.is_roblox_process_or_title(1, "Discord") is False
+
