@@ -1,0 +1,120 @@
+name: Auto Sync Upstream & Release
+
+on:
+  schedule:
+    # Check for upstream updates every 6 hours
+    - cron: "0 */6 * * *"
+  workflow_dispatch: # Allows manual trigger from GitHub Actions UI anytime
+
+permissions:
+  contents: write
+
+jobs:
+  sync-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Fork Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git Credentials
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add Upstream Remote
+        run: |
+          git remote add upstream https://github.com/Cweamy/Anime-Expeditions-Creams-Macro.git || true
+          git fetch upstream main --tags
+
+      - name: Check for Upstream Updates
+        id: check_updates
+        shell: pwsh
+        run: |
+          $local_sha = (git rev-parse HEAD).Trim()
+          $upstream_sha = (git rev-parse upstream/main).Trim()
+          Write-Host "Local SHA: $local_sha"
+          Write-Host "Upstream SHA: $upstream_sha"
+          if ($local_sha -ne $upstream_sha) {
+            Write-Host "New updates found on upstream!"
+            echo "has_updates=true" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "Fork is up to date with upstream."
+            echo "has_updates=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Merge Upstream into Main
+        if: steps.check_updates.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          git merge upstream/main -m "auto-sync: integrate upstream updates from Cweamy/main"
+
+      - name: Set up Python
+        if: steps.check_updates.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Dependencies & Run Tests
+        if: steps.check_updates.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          pip install -r requirements.txt
+          pip install pytest pyinstaller
+          python -m pytest
+
+      - name: Read Current Version
+        id: get_version
+        if: steps.check_updates.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: |
+          $ver = (Get-Content VERSION -Raw).Trim()
+          $tag_name = "v$ver"
+          Write-Host "Current version tag: $tag_name"
+          echo "version=$ver" >> $env:GITHUB_OUTPUT
+          echo "tag_name=$tag_name" >> $env:GITHUB_OUTPUT
+
+      - name: Build App Exe (PyInstaller)
+        if: steps.check_updates.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch'
+        run: python build_pyinstaller.py
+
+      - name: Package Release Zip
+        if: steps.check_updates.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force package | Out-Null
+          Copy-Item "dist/Creams Macro - Anime Expeditions.exe" package/
+          Copy-Item Assets package/Assets -Recurse
+          Compress-Archive -Path package/* -DestinationPath "dist/Creams-Macro-Anime-Expeditions-Windows.zip"
+
+      - name: Push Updated Main Branch & Tag to Fork
+        if: steps.check_updates.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.get_version.outputs.tag_name }}"
+          git push origin main
+          if (-not (git tag -l $tag)) {
+            git tag $tag
+            git push origin $tag
+          } else {
+            git tag -f $tag
+            git push origin $tag --force
+          }
+
+      - name: Create or Update GitHub Release
+        if: steps.check_updates.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.tag_name }}
+          name: ${{ steps.get_version.outputs.tag_name }} (Auto-Synced & Built)
+          body: |
+            ## 🚀 Auto-Synced Release `${{ steps.get_version.outputs.tag_name }}`
+            
+            This release was automatically synced from upstream (`Cweamy/Anime-Expeditions-Creams-Macro`) and built with all custom fork fixes applied:
+            - 💻 **Laptop & DPI Scaling Fixes** (small screens support)
+            - 🚀 **Bloxstrap & Custom Process Detection**
+            - 📦 **Tesseract Winget Installer Resolution**
+            - ⚡ **OpenCV/NumPy Vectorized Vision Engine**
+          files: |
+            dist/Creams-Macro-Anime-Expeditions-Windows.zip
+            dist/Creams Macro - Anime Expeditions.exe
