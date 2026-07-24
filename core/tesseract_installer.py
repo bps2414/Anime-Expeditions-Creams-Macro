@@ -85,4 +85,3 @@ def install_tesseract(log=None) -> bool:
 
     log(f"[Tesseract] winget install failed (exit {result.returncode}): {output or 'no output'}")
     return False
-
