@@ -92,4 +92,3 @@ def test_install_tesseract_real_failure():
         assert ok is False
         assert any("winget install failed (exit 1)" in m for m in logs)
 
-
