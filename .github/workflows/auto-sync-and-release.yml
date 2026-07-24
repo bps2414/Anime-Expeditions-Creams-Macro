@@ -78,14 +78,19 @@ jobs:
         if: steps.check_updates.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch'
         run: python build_pyinstaller.py
 
-      - name: Package Release Zip
+      # Package the release zip using original upstream repository Assets, 
+      # substituting ONLY the compiled executable with our custom fixed build.
+      - name: Package Release Zip (Original Repo Assets + Custom EXE)
         if: steps.check_updates.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force package | Out-Null
+          # 1. Use our custom fixed executable
           Copy-Item "dist/Creams Macro - Anime Expeditions.exe" package/
+          # 2. Use official upstream Assets directory from synced repository
           Copy-Item Assets package/Assets -Recurse
           Compress-Archive -Path package/* -DestinationPath "dist/Creams-Macro-Anime-Expeditions-Windows.zip"
+
 
       - name: Push Updated Main Branch & Tag to Fork
         if: steps.check_updates.outputs.has_updates == 'true' || github.event_name == 'workflow_dispatch'
