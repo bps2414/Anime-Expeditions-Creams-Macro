@@ -94,6 +94,9 @@ function tickTimers() {
 // Task screen: waiting / docked status
 // ---------------------------------------------------------------------------
 let hasAutoShownDashboard = false;
+// Compact strip (F7) state -- declared up here (not beside toggleCompactStrip)
+// because switchScreen above reads it.
+let compactMode = false;
 
 // Called from Python (main.py) the moment docking actually succeeds,
 // don't wait on the 1.5s status poll for a state this important to flip.
@@ -347,6 +350,15 @@ if (IS_MAC) document.documentElement.dataset.platform = 'mac';
 let wasMacroRunning = false;
 
 function switchScreen(name) {
+  // Navigating anywhere off the Dashboard drops out of the compact strip --
+  // the strip is a Dashboard overlay, so leaving the Dashboard should restore
+  // the full UI (and the full window size) rather than leave the strip
+  // stranded over a trimmed window.
+  if (compactMode && name !== 'dashboard') {
+    compactMode = false;
+    document.body.classList.remove('compact-mode');
+    try { pywebview.api.exit_compact(); } catch (e) {}
+  }
   const changed = currentScreen !== name;
   currentScreen = name;
   if (name !== 'dashboard') lastNonDashboardScreen = name;
@@ -418,6 +430,31 @@ function toggleGameScreenHotkey() {
 }
 
 // ---------------------------------------------------------------------------
+// Compact strip (F7): hide the busy side panel + process log and show a slim
+// control bar at the bottom, leaving the docked game exactly where it is
+// (visible and clickable -- nothing about the window size or docking changes,
+// so the macro keeps clicking Roblox normally). Pure DOM: body.compact-mode
+// does all the hiding via CSS. (compactMode is declared near the top so the
+// earlier switchScreen can read it.)
+// ---------------------------------------------------------------------------
+function toggleCompactStrip() {
+  if (!compactMode) {
+    // The strip only makes sense over the game, which lives on the Dashboard
+    // -- make sure we're there (also un-hides the game if we were elsewhere).
+    switchScreen('dashboard');
+    compactMode = true;
+    document.body.classList.add('compact-mode');
+    // Trim the window to just the game + strip (drops the empty side column
+    // and the log gap). Pure size change -- the game stays docked/clickable.
+    try { pywebview.api.enter_compact(); } catch (e) {}
+  } else {
+    compactMode = false;
+    document.body.classList.remove('compact-mode');
+    try { pywebview.api.exit_compact(); } catch (e) {}
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Status polling
 // ---------------------------------------------------------------------------
 async function refreshStatus() {
@@ -433,6 +470,8 @@ async function refreshStatus() {
     document.getElementById('stat-current-repeat').textContent = status.current_repeat ?? '-';
     document.getElementById('stat-map').textContent = status.map ?? '-';
     document.getElementById('stat-action').textContent = status.action ?? '-';
+    const csAction = document.getElementById('compact-action');
+    if (csAction) csAction.textContent = status.action ?? 'Idle';
     document.getElementById('stat-last-run').textContent = status.last_run ?? '-';
     document.getElementById('stat-challenge').textContent = status.time_until_challenge ?? '-';
     document.getElementById('stat-mode').textContent = status.mode ?? '-';
@@ -495,6 +534,19 @@ function setMacroButtons(running, paused) {
     const label = document.getElementById('btn-macro-pause-label');
     if (label) label.textContent = paused ? 'Resume' : 'Pause';
   }
+  // Mirror the same state onto the compact strip's buttons.
+  const csStart = document.getElementById('cs-start');
+  const csPause = document.getElementById('cs-pause');
+  const csStop = document.getElementById('cs-stop');
+  const csDot = document.getElementById('cs-dot');
+  if (csStart) csStart.disabled = running;
+  if (csStop) csStop.disabled = !running;
+  if (csPause) {
+    csPause.disabled = !running;
+    csPause.classList.toggle('on', !!paused);
+    csPause.setAttribute('data-tooltip', paused ? 'Resume' : 'Pause');
+  }
+  if (csDot) csDot.className = 'cs-dot' + (running ? (paused ? ' paused' : ' running') : '');
 }
 
 async function startMacro() {
@@ -618,6 +670,7 @@ let rebindingAction = null;
 // Esc during capture instead.
 const HOTKEY_DEFAULTS = {
   toggle_game: 'f4', skip_waiting: '', macro_start: 'f1', macro_stop: 'f2', macro_pause: 'f5', debug_screenshot: 'f3',
+  image_manager: 'f6', toggle_compact: 'f7',
 };
 
 // Reflects one hotkey's state into its button text and shows/hides its
@@ -699,6 +752,8 @@ async function resetHotkeys() {
     updateKeybindDisplay('macro_stop', hk.macro_stop || '');
     updateKeybindDisplay('macro_pause', hk.macro_pause || '');
     updateKeybindDisplay('debug_screenshot', hk.debug_screenshot || '');
+    updateKeybindDisplay('image_manager', hk.image_manager || '');
+    updateKeybindDisplay('toggle_compact', hk.toggle_compact || '');
   } catch (e) {}
 }
 
@@ -900,6 +955,7 @@ async function loadSettingsUI() {
     updateKeybindDisplay('macro_pause', hk.macro_pause || '');
     updateKeybindDisplay('debug_screenshot', hk.debug_screenshot || '');
     updateKeybindDisplay('image_manager', hk.image_manager || '');
+    updateKeybindDisplay('toggle_compact', hk.toggle_compact || '');
     updateDashboardHotkeys(hk);
   } catch (e) {}
   try {
@@ -2254,6 +2310,11 @@ const BLOCK_TYPES = {
   // applyPlaceUnitPosition writes params.x/y for whichever block opened
   // it, so the picker needed no changes to support this).
   click:              { label: 'Click',             group: 'Setup',  color: 'var(--rose)',  params: [{ key: 'x', type: 'number', placeholder: 'x', default: 0 }, { key: 'y', type: 'number', placeholder: 'y', default: 0 }] },
+  // Presses a keyboard key at this point (an ability, interact, menu key --
+  // anything no dedicated block covers). Bespoke controls: a key-capture
+  // button + an optional hold time. See renderSendKeyControls / the runner's
+  // _run_send_key_tick.
+  send_key:           { label: 'Send Key',          group: 'Setup',  color: 'var(--brand)', params: [{ key: 'hold_ms', type: 'number', placeholder: 'hold ms', default: 0 }] },
 };
 
 // Two phases: Pre Start (walk to your spot, place starter units, flip any
@@ -2268,7 +2329,7 @@ const PHASE_ALLOWED = {
   // pinned block -- every routine always has exactly one in Pre Start
   // (synthesized on new/load, never removable), so offering it as an
   // addable block would only create duplicates.
-  prestart: ['place_unit', 'setting_change', 'auto_upgrade_unit', 'click', 'wait_ms'],
+  prestart: ['place_unit', 'setting_change', 'auto_upgrade_unit', 'click', 'wait_ms', 'send_key'],
   battle: Object.keys(BLOCK_TYPES).filter(t => t !== 'walk_path'),
 };
 
@@ -2326,6 +2387,7 @@ function addBlock(type, phase, atIndex) {
   if (type === 'place_unit') { block.hotkey = ''; }
   if (type === 'walk') { block.params.path = ''; }
   if (type === 'walk_path') { block.mode = 'auto'; block.pathName = ''; }
+  if (type === 'send_key') { block.key = ''; }
   if (type === 'upgrade_unit') { block.params.index = ''; block.params.times = 1; }
   if (type === 'auto_upgrade_unit') { block.params.index = ''; block.params.priority = 1; }
   if (type === 'sell_unit') { block.params.index = ''; }
@@ -2825,6 +2887,17 @@ function renderClickControls(b) {
   return x + y + set;
 }
 
+// Send Key block: capture a key (stored in b.key, reusing the same keybind
+// capture the Place Unit hotkey uses) + an optional hold time in ms (0 = a
+// quick tap). See the runner's _run_send_key_tick.
+function renderSendKeyControls(b) {
+  const field = (label, inner) => `
+    <label class="blk-field"><span class="blk-field-label">${label}</span>${inner}</label>`;
+  const key = field('Key', `<button type="button" class="keybind-btn" onclick="startBlockHotkeyCapture('${b.id}', 'key', this)">${b.key ? b.key.toUpperCase() : 'Set key'}</button>`);
+  const hold = field('Hold (ms)', `<input class="block-input" type="number" min="0" style="width:70px;" value="${b.params.hold_ms ?? 0}" oninput="updateBlockParam('${b.id}', 'hold_ms', this.value)" title="0 = quick tap; higher = hold the key that long">`);
+  return key + hold;
+}
+
 // Walk block: dropdown of the same recorded paths the pinned Walk Path row
 // offers -- mid-battle repositioning reuses the exact same recordings --
 // plus its own Record button, which drops the freshly saved path straight
@@ -2946,10 +3019,12 @@ function renderBlockRow(b, phase) {
   // place_unit and click render ALL their fields bespoke (labeled X/Y +
   // the Set picker button) -- the generic anonymous param inputs would
   // duplicate them.
-  const inputs = (b.type === 'place_unit' || b.type === 'click') ? '' : def.params.map(p => renderParamInput(b, p)).join('');
+  const inputs = (b.type === 'place_unit' || b.type === 'click' || b.type === 'send_key')
+    ? '' : def.params.map(p => renderParamInput(b, p)).join('');
   const extra = b.type === 'setting_change' ? renderSettingControls(b)
     : b.type === 'place_unit' ? renderPlaceUnitControls(b)
     : b.type === 'click' ? renderClickControls(b)
+    : b.type === 'send_key' ? renderSendKeyControls(b)
     : b.type === 'walk' ? renderWalkControls(b)
     : b.type === 'walk_path' ? renderWalkPathControls(b)
     : b.type === 'upgrade_unit' ? renderUpgradeControls(b)
@@ -4195,7 +4270,7 @@ async function saveCurrentTemplate() {
     payload[phase] = creationPhases[phase].map(b => ({
       type: b.type, params: b.params, once: b.once, kind: b.kind, value: b.value, hotkey: b.hotkey,
       mode: b.mode, pathName: b.pathName, ignoreHighlight: b.ignoreHighlight, retryUntilPlaced: b.retryUntilPlaced,
-      sprint: b.sprint,
+      sprint: b.sprint, key: b.key,
     }));
   });
   try {
@@ -4305,6 +4380,7 @@ function blockFromSaved(b) {
     block.pathName = b.pathName || '';
   }
   if (b.type === 'walk_path' || b.type === 'walk') block.sprint = !!b.sprint;
+  if (b.type === 'send_key') block.key = b.key || '';
   return block;
 }
 

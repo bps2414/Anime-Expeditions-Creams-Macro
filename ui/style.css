@@ -1490,3 +1490,77 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
   min-height: 120px;
 }
 
+/* ============ Compact strip (F7) ============
+   A slim control bar pinned to the bottom of the (still full-size) window,
+   shown only while body.compact-mode is set. It hides the busy side panel +
+   process log but leaves the docked game exactly where it is -- Roblox stays
+   visible and clickable, the window is never resized, docking is untouched. */
+#compact-strip { display: none; }
+
+/* Hide the busy dashboard chrome; keep the game slot (and its docked Roblox). */
+body.compact-mode #dash-side,
+body.compact-mode #dash-log { display: none !important; }
+
+body.compact-mode #compact-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 50px;
+  padding: 0 14px;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  box-sizing: border-box;
+  -webkit-user-select: none;
+  user-select: none;
+  overflow: hidden;
+  z-index: 60;
+}
+
+.cs-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+}
+.cs-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.cs-dot.running { background: var(--teal); box-shadow: 0 0 7px var(--teal); animation: cs-pulse 1.6s ease-in-out infinite; }
+.cs-dot.paused { background: var(--amber); box-shadow: 0 0 7px var(--amber); }
+@keyframes cs-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+.cs-action {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-btns { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.cs-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s, opacity 0.12s;
+}
+.cs-btn svg { width: 14px; height: 14px; }
+.cs-btn:hover:not(:disabled) { border-color: var(--brand); color: var(--text); }
+.cs-btn:disabled { opacity: 0.4; cursor: default; }
+.cs-start:not(:disabled) { color: var(--teal); }
+.cs-stop:not(:disabled) { color: var(--rose); }
+.cs-pause.on { color: var(--amber); border-color: var(--amber); }
+.cs-expand { color: var(--brand); }
+

@@ -92,6 +92,33 @@
     </div>
   </div>
 
+  <!-- ============ COMPACT STRIP (F7) ============
+       A slim control bar pinned to the bottom of the (normal, full-size)
+       window, shown only while body.compact-mode is set (see
+       toggleCompactStrip in app.js). It hides the busy side panel + process
+       log via CSS but leaves the docked Roblox exactly where it is -- the
+       game stays visible and clickable, nothing about docking is touched. -->
+  <div id="compact-strip">
+    <span class="cs-status">
+      <span class="cs-dot" id="cs-dot"></span>
+      <span class="cs-action" id="compact-action">Idle</span>
+    </span>
+    <div class="cs-btns">
+      <button id="cs-start" class="cs-btn cs-start" onclick="startMacro()" data-tooltip="Start">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.5 4.6c0-1.2 1.3-1.9 2.3-1.3l11 6.9c.9.6.9 2 0 2.6l-11 6.9c-1 .6-2.3-.1-2.3-1.3V4.6z"/></svg>
+      </button>
+      <button id="cs-pause" class="cs-btn cs-pause" onclick="togglePauseMacro()" data-tooltip="Pause" disabled>
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4.5" width="4" height="15" rx="1.2"/><rect x="14" y="4.5" width="4" height="15" rx="1.2"/></svg>
+      </button>
+      <button id="cs-stop" class="cs-btn cs-stop" onclick="stopMacro()" data-tooltip="Stop" disabled>
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+      </button>
+      <button id="cs-expand" class="cs-btn cs-expand" onclick="toggleCompactStrip()" data-tooltip="Back to dashboard (F7)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      </button>
+    </div>
+  </div>
+
   <!-- ============ DASHBOARD screen (default): the docked Roblox view ============ -->
   <div id="screen-dashboard" class="flex-1 flex flex-col min-h-0">
 
@@ -159,7 +186,7 @@
            sit below it, using the width Roblox doesn't need for its own height. -->
       <div class="flex flex-col flex-shrink-0" style="width: 1152px;">
         <div id="game-slot" style="height: 756px; flex-shrink: 0;"></div>
-        <div class="flex-1 flex flex-col p-3 min-h-0">
+        <div id="dash-log" class="flex-1 flex flex-col p-3 min-h-0">
           <section class="rp-panel rp-panel-fill">
             <header class="rp-panel-head">
               <span class="rp-head-tag" style="--rp-tag: var(--brand);">Live</span>
@@ -187,7 +214,7 @@
         </div>
       </div>
 
-      <div class="flex flex-col p-3 gap-3 min-h-0 overflow-y-auto" style="width: 400px; flex-shrink: 0;">
+      <div id="dash-side" class="flex flex-col p-3 gap-3 min-h-0 overflow-y-auto" style="width: 400px; flex-shrink: 0;">
         <!-- Status readout: hero Action row + ledger rows with dotted leaders.
              Wrapped in .rp-hoverpanel so the extra detail rows (.rp-rows-extra)
              can be absolutely positioned and overlay the panels below on hover
@@ -670,6 +697,16 @@
               <div class="keybind-group">
                 <button id="keybind-clear-image_manager" class="keybind-clear-btn" onclick="clearHotkey('image_manager')" title="Reset to default key (press Esc while capturing to unbind)">&times;</button>
                 <button id="keybind-image_manager" class="keybind-btn" onclick="startRebind('image_manager', this)">F6</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Compact Strip</div>
+                <div class="setting-desc">Collapse the dashboard to a small always-on-top control bar (and back).</div>
+              </div>
+              <div class="keybind-group">
+                <button id="keybind-clear-toggle_compact" class="keybind-clear-btn" onclick="clearHotkey('toggle_compact')" title="Reset to default key (press Esc while capturing to unbind)">&times;</button>
+                <button id="keybind-toggle_compact" class="keybind-btn" onclick="startRebind('toggle_compact', this)">F7</button>
               </div>
             </div>
           </div>
