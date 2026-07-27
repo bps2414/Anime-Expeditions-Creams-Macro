@@ -637,3 +637,247 @@ def test_unsaved_changes_tracking(tmp_path):
     assert out["afterEdit"] is True
     assert out["afterUndo"] is False, "edit-then-undo must not leave a false warning"
     assert out["afterRename"] is True, "renaming is an unsaved change too"
+
+
+# ---------------------------------------------------------------------------
+# i18n System Tests (ui/i18n.js & Python Api bridge)
+# ---------------------------------------------------------------------------
+
+I18N_JS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "ui", "i18n.js")
+
+_I18N_VM_HARNESS = """
+const fs = require('fs');
+const vm = require('vm');
+
+const i18nCode = fs.readFileSync(process.env.I18N_JS, 'utf8');
+
+function createMockElement(id, attrs = {}, textContent = '', children = []) {
+  return {
+    id,
+    attrs: { ...attrs },
+    textContent,
+    children: [...children],
+    getAttribute(a) { return Object.prototype.hasOwnProperty.call(this.attrs, a) ? this.attrs[a] : null; },
+    setAttribute(a, v) { this.attrs[a] = v; },
+    hasAttribute(a) { return Object.prototype.hasOwnProperty.call(this.attrs, a); }
+  };
+}
+
+function runInVM(testFnString) {
+  const elements = [
+    createMockElement('btn_start', { 'data-i18n': 'buttons.start' }, 'Start'),
+    createMockElement('btn_icon', { 'data-i18n': 'buttons.start' }, 'Start', [{ type: 'svg' }]),
+    createMockElement('search_input', { 'data-i18n': 'settings.language', 'data-i18n-attr': 'placeholder', 'placeholder': 'Search...' }),
+    createMockElement('title_el', { 'data-i18n': 'settings.title', 'data-i18n-attr': 'title', 'title': 'App Title' }),
+    createMockElement('aria_el', { 'data-i18n': 'buttons.close', 'data-i18n-attr': 'aria-label', 'aria-label': 'Close App' }),
+    createMockElement('unallowed_attr', { 'data-i18n': 'buttons.start', 'data-i18n-attr': 'src', 'src': 'image.png' }),
+    createMockElement('languageSelect', {}, 'en')
+  ];
+
+  const mockDocument = {
+    documentElement: { lang: 'en' },
+    querySelectorAll(sel) {
+      if (sel === '[data-i18n]') return elements;
+      return [];
+    },
+    getElementById(id) {
+      return elements.find(e => e.id === id) || null;
+    }
+  };
+
+  const sandbox = {
+    console: console,
+    document: mockDocument,
+    setTimeout: setTimeout,
+    clearTimeout: clearTimeout
+  };
+  sandbox.window = sandbox;
+
+  const context = vm.createContext(sandbox);
+  vm.runInContext(i18nCode, context);
+  return vm.runInContext(`(${testFnString})()`, context);
+}
+"""
+
+
+def run_i18n_vm(test_fn_body, tmp_path):
+    """Run a JS test snippet inside Node.js 24 using a fresh, isolated VM context."""
+    script = tmp_path / "test_i18n_vm.js"
+    code = _I18N_VM_HARNESS + f"\nconst res = runInVM(`async () => {{ {textwrap.dedent(test_fn_body)} }}`);\nres.then(out => console.log(JSON.stringify(out)));\n"
+    script.write_text(code, encoding="utf-8")
+    env = {**os.environ, "I18N_JS": I18N_JS}
+    proc = subprocess.run(["node", str(script)], capture_output=True, encoding="utf-8", env=env, timeout=60)
+    assert proc.returncode == 0, f"node failed:\n{proc.stdout}\n{proc.stderr}"
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def test_i18n_translation_en_and_pt(tmp_path):
+    out = run_i18n_vm("""
+        window.I18n.applyTranslations('en');
+        const startEN = window.I18n.t('buttons.start');
+        window.I18n.applyTranslations('pt-BR');
+        const startPT = window.I18n.t('buttons.start');
+        return { startEN, startPT };
+    """, tmp_path)
+    assert out["startEN"] == "Start"
+    assert out["startPT"] == "Iniciar"
+
+
+def test_i18n_fallbacks_and_raw_key_prevention(tmp_path):
+    out = run_i18n_vm("""
+        window.I18n.applyTranslations('pt-BR');
+        const customFb = window.I18n.t('nonexistent.key', 'Original Text');
+        const defaultFb = window.I18n.t('nonexistent.key');
+        return { customFb, defaultFb };
+    """, tmp_path)
+    assert out["customFb"] == "Original Text"
+    assert out["defaultFb"] == "Texto indisponível"
+    assert out["defaultFb"] != "nonexistent.key"
+
+
+def test_i18n_invalid_or_empty_translation_rejection(tmp_path):
+    out = run_i18n_vm("""
+        window.I18n.applyTranslations('pt-BR');
+        const emptyKey = window.I18n.t('');
+        const nullKey = window.I18n.t(null);
+        const protoKey = window.I18n.t('__proto__.pollute');
+        return { emptyKey, nullKey, protoKey };
+    """, tmp_path)
+    assert out["emptyKey"] == "Texto indisponível"
+    assert out["nullKey"] == "Texto indisponível"
+    assert out["protoKey"] == "Texto indisponível"
+
+
+def test_i18n_interpolation_rules(tmp_path):
+    out = run_i18n_vm("""
+        const interp = window.I18n.interpolate;
+        const repeated = interp('Hello {name}, welcome back {name}!', { name: 'Bryan' });
+        const zeroVal = interp('Count: {count}', { count: 0 });
+        const falseVal = interp('Active: {active}', { active: false });
+        const missingVar = interp('Value: {missing}', {});
+        const nullVar = interp('Value: {val}', { val: null });
+        return { repeated, zeroVal, falseVal, missingVar, nullVar };
+    """, tmp_path)
+    assert out["repeated"] == "Hello Bryan, welcome back Bryan!"
+    assert out["zeroVal"] == "Count: 0"
+    assert out["falseVal"] == "Active: false"
+    assert out["missingVar"] == "Value: "
+    assert out["nullVar"] == "Value: "
+
+
+def test_i18n_dom_attribute_allowlist_and_original_preservation(tmp_path):
+    out = run_i18n_vm("""
+        window.I18n.applyTranslations('pt-BR');
+        const phPT = document.getElementById('search_input').getAttribute('placeholder');
+        const titlePT = document.getElementById('title_el').getAttribute('title');
+        const ariaPT = document.getElementById('aria_el').getAttribute('aria-label');
+        const unallowedSrc = document.getElementById('unallowed_attr').getAttribute('src');
+
+        // Sequencia repetida: pt-BR -> en -> invalid -> pt-BR
+        window.I18n.applyTranslations('en');
+        window.I18n.applyTranslations('invalid');
+        window.I18n.applyTranslations('pt-BR');
+        const btnTextFinal = document.getElementById('btn_start').textContent;
+
+        return { phPT, titlePT, ariaPT, unallowedSrc, btnTextFinal };
+    """, tmp_path)
+    assert out["phPT"] == "Idioma"
+    assert out["titlePT"] == "Configurações"
+    assert out["ariaPT"] == "Fechar"
+    assert out["unallowedSrc"] == "image.png"
+    assert out["btnTextFinal"] == "Iniciar"
+
+
+def test_i18n_idempotent_init(tmp_path):
+    out = run_i18n_vm("""
+        window.I18n.init();
+        window.I18n.init();
+        return { lang: window.I18n.getCurrentLanguage() };
+    """, tmp_path)
+    assert out["lang"] == "en"
+
+
+def test_i18n_bridge_missing_resilience(tmp_path):
+    out = run_i18n_vm("""
+        delete window.pywebview;
+        await window.I18n.loadSavedLanguage();
+        return { lang: window.I18n.getCurrentLanguage() };
+    """, tmp_path)
+    assert out["lang"] == "en"
+
+
+def test_i18n_dictionary_completeness(tmp_path):
+    """Garante paridade entre as chaves de en e pt-BR e proíbe traduções vazias."""
+    out = run_i18n_vm("""
+        const dict = window.I18n.TRANSLATIONS;
+        const enKeys = Object.keys(dict['en']);
+        const ptKeys = Object.keys(dict['pt-BR']);
+        return { enKeys, ptKeys };
+    """, tmp_path)
+    assert set(out["enKeys"]) == set(out["ptKeys"])
+
+
+def test_python_backend_strict_language_api():
+    import sys
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+
+    from main import Api, normalize_language
+    assert normalize_language("pt-BR") == "pt-BR"
+    assert normalize_language("en") == "en"
+    assert normalize_language("invalid") == "en"
+
+    api = Api()
+    invalid_res = api.set_language("invalid")
+    assert invalid_res["success"] is False
+    assert invalid_res["error"] == "unsupported_language"
+
+    valid_res = api.set_language("pt-BR")
+    assert valid_res["success"] is True
+    assert valid_res["language"] == "pt-BR"
+    assert api.get_language() == "pt-BR"
+
+    api.set_language("en")
+    assert api.get_language() == "en"
+
+
+def test_concurrent_settings_update():
+    """Valida que o lock de cfg.update() é atômico em chamadas concorrentes."""
+    import threading
+    import sys
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+
+    from core import settings as cfg
+
+    def worker(key, val):
+        cfg.update({key: val})
+
+    threads = [threading.Thread(target=worker, args=(f"thread_key_{i}", i)) for i in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    data = cfg.load()
+    for i in range(10):
+        assert data.get(f"thread_key_{i}") == i
+
+
+def test_pyinstaller_build_includes_i18n_js():
+    """Valida se ui/i18n.js está listado nos datas de empacotamento do PyInstaller."""
+    build_script = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "build_pyinstaller.py")
+    spec_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Creams Macro - Anime Expeditions.spec")
+
+    with open(build_script, "r", encoding="utf-8") as f:
+        content = f.read()
+        assert '("ui", "ui")' in content or "('ui', 'ui')" in content
+
+    with open(spec_file, "r", encoding="utf-8") as f:
+        content = f.read()
+        assert "ui" in content
+
+
+

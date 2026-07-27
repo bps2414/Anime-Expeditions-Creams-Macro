@@ -595,7 +595,9 @@ function setMacroButtons(running, paused) {
     pauseBtn.disabled = !running;
     pauseBtn.classList.toggle('on', !!paused);
     const label = document.getElementById('btn-macro-pause-label');
-    if (label) label.textContent = paused ? 'Resume' : 'Pause';
+    const resumeText = window.I18n ? window.I18n.t('buttons.resume', 'Resume') : 'Resume';
+    const pauseText = window.I18n ? window.I18n.t('buttons.pause', 'Pause') : 'Pause';
+    if (label) label.textContent = paused ? resumeText : pauseText;
   }
   // Mirror the same state onto the compact strip's buttons.
   const csStart = document.getElementById('cs-start');
@@ -607,7 +609,9 @@ function setMacroButtons(running, paused) {
   if (csPause) {
     csPause.disabled = !running;
     csPause.classList.toggle('on', !!paused);
-    csPause.setAttribute('data-tooltip', paused ? 'Resume' : 'Pause');
+    const resumeText = window.I18n ? window.I18n.t('buttons.resume', 'Resume') : 'Resume';
+    const pauseText = window.I18n ? window.I18n.t('buttons.pause', 'Pause') : 'Pause';
+    csPause.setAttribute('data-tooltip', paused ? resumeText : pauseText);
   }
   if (csDot) csDot.className = 'cs-dot' + (running ? (paused ? ' paused' : ' running') : '');
 }
@@ -5207,9 +5211,20 @@ function migrateWalkBlock(b) {
 }
 
 // ---------------------------------------------------------------------------
-// Init
+// Init & i18n Initialization
 // ---------------------------------------------------------------------------
+window.addEventListener('DOMContentLoaded', () => {
+  if (window.I18n) {
+    window.I18n.init();
+  }
+});
+
 window.addEventListener('pywebviewready', async () => {
+  if (window.I18n) {
+    window.I18n.init();
+  }
+
+
   // Re-assert the platform from Python, which is authoritative -- the
   // synchronous navigator sniff at the top of this file is what actually beats
   // the first paint, this just corrects it if the user agent ever lies.

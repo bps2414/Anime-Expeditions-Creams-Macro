@@ -77,6 +77,18 @@ IMAGE_MANAGER_CATEGORIES = {
     "maps": ("maps", "Map Names"),
 }
 
+# Suporte a internacionalizacao (i18n) da interface
+SUPPORTED_LANGUAGES = {"en", "pt-BR"}
+DEFAULT_LANGUAGE = "en"
+
+
+def normalize_language(language):
+    """Normaliza o idioma informado, retornando fallback padrao 'en' caso invalido."""
+    if isinstance(language, str) and language in SUPPORTED_LANGUAGES:
+        return language
+    return DEFAULT_LANGUAGE
+
+
 GUI_TITLE = "Cream's Macro | Anime Expeditions"
 PANEL_WIDTH = 400
 TITLEBAR_H = 44  # custom HTML titlebar, since the window is frameless (no native OS titlebar)
@@ -691,6 +703,30 @@ class Api:
             # unattended overnight run surviving a Roblox crash.
             "auto_relaunch_roblox": data.get("auto_relaunch_roblox", True),
         }
+
+    def get_language(self):
+        """Retorna o idioma da interface salvo nas configuracoes (padrao 'en').
+        Tolerante a configuracoes ausentes, antigas ou invalidas."""
+        try:
+            val = cfg.load().get("language", DEFAULT_LANGUAGE)
+            return normalize_language(val)
+        except Exception as e:
+            logger.warning(f"[i18n] Error loading language setting: {e}")
+            return DEFAULT_LANGUAGE
+
+    def set_language(self, language):
+        """Persiste o idioma da interface nas configuracoes.
+        Valida estritamente o idioma e retorna codigo de erro estavel em caso de falha."""
+        if not isinstance(language, str) or language not in SUPPORTED_LANGUAGES:
+            return {"success": False, "error": "unsupported_language"}
+
+        try:
+            cfg.update({"language": language})
+            return {"success": True, "language": language}
+        except Exception as e:
+            logger.error(f"[i18n] Failed to persist language setting: {e}", exc_info=True)
+            return {"success": False, "error": "persistence_failed"}
+
 
     def get_tasks(self) -> list:
         return cfg.load().get("tasks", [])

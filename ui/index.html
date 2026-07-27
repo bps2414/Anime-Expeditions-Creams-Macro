@@ -48,29 +48,29 @@
     </div>
 
     <div class="flex items-center gap-1 no-drag">
-      <button id="nav-dashboard" onclick="switchScreen('dashboard')" class="nav-btn active no-drag" data-tooltip="Dashboard">
+      <button id="nav-dashboard" onclick="switchScreen('dashboard')" class="nav-btn active no-drag" data-tooltip="Dashboard" data-i18n="tabs.dashboard" data-i18n-attr="data-tooltip">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
           <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
         </svg>
       </button>
-      <button id="nav-task" onclick="switchScreen('task')" class="nav-btn no-drag" data-tooltip="Task">
+      <button id="nav-task" onclick="switchScreen('task')" class="nav-btn no-drag" data-tooltip="Task" data-i18n="tabs.task" data-i18n-attr="data-tooltip">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M9 11l3 3L22 4"/>
           <path stroke-linecap="round" stroke-linejoin="round" d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
         </svg>
       </button>
-      <button id="nav-creation" onclick="switchScreen('creation')" class="nav-btn no-drag" data-tooltip="Macro Manager">
+      <button id="nav-creation" onclick="switchScreen('creation')" class="nav-btn no-drag" data-tooltip="Macro Manager" data-i18n="tabs.creation" data-i18n-attr="data-tooltip">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16M4 12h16"/>
         </svg>
       </button>
-      <button id="nav-challenge" onclick="switchScreen('challenge')" class="nav-btn no-drag" data-tooltip="Challenge">
+      <button id="nav-challenge" onclick="switchScreen('challenge')" class="nav-btn no-drag" data-tooltip="Challenge" data-i18n="tabs.challenge" data-i18n-attr="data-tooltip">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 2l2.6 6.2 6.7.6-5.1 4.4 1.6 6.5L12 16.3l-5.8 3.4 1.6-6.5-5.1-4.4 6.7-.6z"/>
         </svg>
       </button>
-      <button id="nav-settings" onclick="switchScreen('settings')" class="nav-btn no-drag" data-tooltip="Settings">
+      <button id="nav-settings" onclick="switchScreen('settings')" class="nav-btn no-drag" data-tooltip="Settings" data-i18n="tabs.settings" data-i18n-attr="data-tooltip">
         <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="3"/>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -88,11 +88,11 @@
     <div class="flex items-center gap-4 no-drag">
       <div class="flex items-center gap-3 tooltip-left" data-tooltip="Time this session / all-time total">
         <div class="flex flex-col items-end" style="line-height: 1;">
-          <span class="text-[8px] uppercase tracking-wider" style="color: var(--text-muted);">Session</span>
+          <span class="text-[8px] uppercase tracking-wider" style="color: var(--text-muted);" data-i18n="header.session">Session</span>
           <span id="session-time" class="text-xs font-semibold" style="color: var(--text-dim);">00:00</span>
         </div>
         <div class="flex flex-col items-end" style="line-height: 1;">
-          <span class="text-[8px] uppercase tracking-wider" style="color: var(--text-muted);">All Time</span>
+          <span class="text-[8px] uppercase tracking-wider" style="color: var(--text-muted);" data-i18n="header.allTime">All Time</span>
           <span id="alltime-time" class="text-xs font-semibold" style="color: var(--lilac);">00:00</span>
         </div>
       </div>
@@ -174,15 +174,15 @@
         <svg class="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2">
           <circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/><circle cx="12" cy="12" r="0.6" fill="var(--brand)"/>
         </svg>
-        Waiting for Roblox<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>
+        <span data-i18n="dashboard.waitingRoblox">Waiting for Roblox</span><span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>
       </div>
-      <div class="text-xs font-medium" style="color: var(--text-muted); margin-top: 4px;">Launch Roblox, it'll dock in automatically</div>
+      <div class="text-xs font-medium" style="color: var(--text-muted); margin-top: 4px;" data-i18n="dashboard.launchRoblox">Launch Roblox, it'll dock in automatically</div>
 
       <button onclick="skipWaiting()" class="loading-skip-btn flex items-center gap-1.5 text-xs font-semibold px-3.5 py-1.5 rounded-full border transition"
               style="color: var(--text-dim); border-color: var(--border); background: var(--bg-surface); margin-top: 16px;"
               onmouseover="this.style.borderColor='var(--brand)'; this.style.color='var(--text)';"
               onmouseout="this.style.borderColor='var(--border)'; this.style.color='var(--text-dim)';">
-        Skip
+        <span data-i18n="buttons.skip">Skip</span>
         <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M5 5l7 7-7 7M15 5l7 7-7 7"/>
         </svg>
@@ -201,7 +201,7 @@
           <section class="rp-panel rp-panel-fill">
             <header class="rp-panel-head">
               <span class="rp-head-tag" style="--rp-tag: var(--brand);">Live</span>
-              <span class="rp-head-title">Process Log</span>
+              <span class="rp-head-title" data-i18n="dashboard.processLog">Process Log</span>
               <span class="rp-head-rule"></span>
               <div class="flex items-center gap-3 flex-shrink-0">
                 <button onclick="popOutLogs()" class="log-toolbar-btn flex items-center gap-1 text-[10px] font-semibold"
@@ -211,15 +211,15 @@
                     <polyline points="15 3 21 3 21 9"/>
                     <line x1="10" y1="14" x2="21" y2="3"/>
                   </svg>
-                  Pop Out
+                  <span data-i18n="buttons.popOut">Pop Out</span>
                 </button>
                 <button onclick="clearLogs()" class="log-toolbar-btn text-[10px] font-semibold"
-                        style="color: var(--text-muted);" title="Clear logs">Clear</button>
+                        style="color: var(--text-muted);" title="Clear logs" data-i18n="buttons.clear">Clear</button>
               </div>
             </header>
             <div id="log-list" class="rp-log-list overflow-y-auto font-mono font-medium text-[11px] p-2 space-y-0.5"
                  style="color: var(--text-dim);">
-              <div>&gt; Waiting for macro to start...</div>
+              <div data-i18n="dashboard.waitingStart">&gt; Waiting for macro to start...</div>
             </div>
             <!-- Shown only while you have scrolled away from the newest line
                  (see ui/log_view.js). The log stops auto-following as soon as
@@ -245,51 +245,51 @@
         <section class="rp-panel">
           <header class="rp-panel-head">
             <span class="rp-head-tag" style="--rp-tag: var(--lilac);">Live</span>
-            <span class="rp-head-title">Status Readout</span>
+            <span class="rp-head-title" data-i18n="dashboard.statusReadout">Status Readout</span>
             <span class="rp-head-rule"></span>
             <span class="rp-expand-hint" title="Hover for more detail">&#9662; details</span>
           </header>
           <div class="rp-hero">
             <span class="rp-pulse"></span>
             <div>
-              <div class="rp-hero-label">Action</div>
+              <div class="rp-hero-label" data-i18n="dashboard.action">Action</div>
               <div class="rp-hero-value" id="stat-action">Idle</div>
             </div>
           </div>
           <div class="rp-rows">
             <div class="rp-row">
               <span class="rp-mark" style="--rp-mk: var(--lilac);"></span>
-              <span class="rp-row-label">Current Task</span>
+              <span class="rp-row-label" data-i18n="dashboard.currentTask">Current Task</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-current-task">-</span>
             </div>
             <div class="rp-row">
               <span class="rp-mark" style="--rp-mk: var(--teal);"></span>
-              <span class="rp-row-label">Repeat</span>
+              <span class="rp-row-label" data-i18n="dashboard.repeat">Repeat</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-current-repeat">-</span>
             </div>
             <div class="rp-row">
               <span class="rp-mark" style="--rp-mk: var(--brand);"></span>
-              <span class="rp-row-label">Map</span>
+              <span class="rp-row-label" data-i18n="dashboard.map">Map</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-map">-</span>
             </div>
             <div class="rp-row">
               <span class="rp-mark" style="--rp-mk: var(--amber);"></span>
-              <span class="rp-row-label">Last Run</span>
+              <span class="rp-row-label" data-i18n="dashboard.lastRun">Last Run</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-last-run">-</span>
             </div>
             <div class="rp-row">
               <span class="rp-mark" style="--rp-mk: var(--teal);"></span>
-              <span class="rp-row-label">Runs / Hour</span>
+              <span class="rp-row-label" data-i18n="dashboard.runsPerHour">Runs / Hour</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-runs-per-hour">-</span>
             </div>
             <div class="rp-row">
               <span class="rp-mark" style="--rp-mk: var(--slate);"></span>
-              <span class="rp-row-label">Time Until Challenge</span>
+              <span class="rp-row-label" data-i18n="dashboard.timeUntilChallenge">Time Until Challenge</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-challenge">Disabled</span>
             </div>
@@ -302,31 +302,31 @@
           <div class="rp-rows">
             <div class="rp-row">
               <span class="rp-mark" style="--rp-mk: var(--brand);"></span>
-              <span class="rp-row-label">Mode</span>
+              <span class="rp-row-label" data-i18n="dashboard.mode">Mode</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-mode">-</span>
             </div>
             <div class="rp-row">
               <span class="rp-mark" style="--rp-mk: var(--teal);"></span>
-              <span class="rp-row-label">Stage</span>
+              <span class="rp-row-label" data-i18n="dashboard.stage">Stage</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-stage">-</span>
             </div>
             <div class="rp-row">
               <span class="rp-mark" style="--rp-mk: var(--amber);"></span>
-              <span class="rp-row-label">Difficulty</span>
+              <span class="rp-row-label" data-i18n="dashboard.difficulty">Difficulty</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-difficulty">-</span>
             </div>
             <div class="rp-row">
               <span class="rp-mark" style="--rp-mk: var(--slate);"></span>
-              <span class="rp-row-label">Play Mode</span>
+              <span class="rp-row-label" data-i18n="dashboard.playMode">Play Mode</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-play-mode">-</span>
             </div>
             <div class="rp-row">
               <span class="rp-mark" style="--rp-mk: var(--lilac);"></span>
-              <span class="rp-row-label">Macro</span>
+              <span class="rp-row-label" data-i18n="dashboard.macro">Macro</span>
               <span class="rp-leader"></span>
               <span class="rp-row-value" id="stat-macro">-</span>
             </div>
@@ -337,37 +337,37 @@
         <!-- Scoreboard: session up top, split ratio bars, lifetime footer strip. -->
         <section class="rp-panel">
           <header class="rp-panel-head">
-            <span class="rp-head-tag" style="--rp-tag: var(--teal);">Session</span>
-            <span class="rp-head-title">Scoreboard</span>
+            <span class="rp-head-tag" style="--rp-tag: var(--teal);" data-i18n="dashboard.session">Session</span>
+            <span class="rp-head-title" data-i18n="dashboard.scoreboard">Scoreboard</span>
             <span class="rp-head-rule"></span>
           </header>
           <div class="rp-score">
             <div class="rp-score-cell">
               <div class="rp-score-num" id="stat-wins" style="color: var(--teal);">0</div>
-              <div class="rp-score-cap">Wins</div>
+              <div class="rp-score-cap" data-i18n="dashboard.wins">Wins</div>
               <div class="rp-score-sub"><span id="stat-alltime-wins">0</span> all-time</div>
             </div>
             <div class="rp-score-cell">
               <div class="rp-score-rate" id="stat-winrate">-</div>
-              <div class="rp-score-cap">Win Rate</div>
+              <div class="rp-score-cap" data-i18n="dashboard.winRate">Win Rate</div>
               <div class="rp-score-sub"><span id="stat-alltime-winrate">-</span> all-time</div>
             </div>
             <div class="rp-score-cell">
               <div class="rp-score-num" id="stat-losses" style="color: var(--rose);">0</div>
-              <div class="rp-score-cap">Losses</div>
+              <div class="rp-score-cap" data-i18n="dashboard.losses">Losses</div>
               <div class="rp-score-sub"><span id="stat-alltime-losses">0</span> all-time</div>
             </div>
           </div>
           <div class="rp-ratio">
             <div class="rp-ratio-row">
-              <span class="rp-ratio-tag">Session</span>
+              <span class="rp-ratio-tag" data-i18n="dashboard.session">Session</span>
               <div class="rp-track">
                 <div id="bar-session-wins" class="rp-seg rp-seg-w" style="width: 0%;"></div>
                 <div id="bar-session-losses" class="rp-seg rp-seg-l" style="width: 0%;"></div>
               </div>
             </div>
             <div class="rp-ratio-row">
-              <span class="rp-ratio-tag">All Time</span>
+              <span class="rp-ratio-tag" data-i18n="header.allTime">All Time</span>
               <div class="rp-track">
                 <div id="bar-alltime-wins" class="rp-seg rp-seg-w" style="width: 0%;"></div>
                 <div id="bar-alltime-losses" class="rp-seg rp-seg-l" style="width: 0%;"></div>
@@ -377,7 +377,7 @@
           <div class="rp-foot">
             <b id="stat-total-runs">0 total runs</b>
             <span class="rp-foot-sep">&middot;</span>
-            <span>lifetime record</span>
+            <span data-i18n="dashboard.lifetimeRecord">lifetime record</span>
           </div>
         </section>
 
@@ -385,7 +385,7 @@
         <section class="rp-panel">
           <header class="rp-panel-head">
             <span class="rp-head-tag" style="--rp-tag: var(--brand);">Macro</span>
-            <span class="rp-head-title">Controls</span>
+            <span class="rp-head-title" data-i18n="dashboard.controls">Controls</span>
             <span class="rp-head-rule"></span>
           </header>
           <div id="task-grid" class="rp-controls">
@@ -393,7 +393,7 @@
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M6.5 4.6c0-1.2 1.3-1.9 2.3-1.3l11 6.9c.9.6.9 2 0 2.6l-11 6.9c-1 .6-2.3-.1-2.3-1.3V4.6z"/>
               </svg>
-              Start
+              <span data-i18n="buttons.start">Start</span>
               <span id="btn-macro-start-key" class="rp-btn-hotkey"></span>
             </button>
             <button id="btn-macro-pause" class="rp-btn rp-btn-pause" onclick="togglePauseMacro()" disabled>
@@ -401,14 +401,14 @@
                 <rect x="6" y="4.5" width="4" height="15" rx="1.2"/>
                 <rect x="14" y="4.5" width="4" height="15" rx="1.2"/>
               </svg>
-              <span id="btn-macro-pause-label">Pause</span>
+              <span id="btn-macro-pause-label" data-i18n="buttons.pause">Pause</span>
               <span id="btn-macro-pause-key" class="rp-btn-hotkey"></span>
             </button>
             <button id="btn-macro-stop" class="rp-btn rp-btn-stop" onclick="stopMacro()" disabled>
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="5" y="5" width="14" height="14" rx="2"/>
               </svg>
-              Stop
+              <span data-i18n="buttons.stop">Stop</span>
               <span id="btn-macro-stop-key" class="rp-btn-hotkey"></span>
             </button>
           </div>
@@ -417,18 +417,19 @@
         <!-- Run history: fills the remaining rail height, scrolls internally. -->
         <section class="rp-panel rp-panel-fill" style="min-height: 120px;">
           <header class="rp-panel-head">
-            <span class="rp-head-tag" style="--rp-tag: var(--amber);">Session</span>
-            <span class="rp-head-title">Run History</span>
+            <span class="rp-head-tag" style="--rp-tag: var(--amber);" data-i18n="dashboard.session">Session</span>
+            <span class="rp-head-title" data-i18n="dashboard.runHistory">Run History</span>
             <span class="rp-head-rule"></span>
             <span id="run-history-count" class="text-[10px] font-semibold flex-shrink-0" style="color: var(--text-muted);"></span>
           </header>
           <div id="run-history-list" class="rp-log-list overflow-y-auto" style="padding: 4px 0 6px;">
-            <div class="rh-empty">No runs yet</div>
+            <div class="rh-empty" data-i18n="dashboard.noRunsYet">No runs yet</div>
           </div>
         </section>
       </div>
     </div>
   </div>
+
 
   <!-- ============ TASK screen: queue (left) + labeled builder (right) ============
        Split view: the left list is just the run order -- compact rows, drag to
@@ -668,15 +669,25 @@
           <div class="grid grid-cols-2 gap-x-6 px-2 pb-2">
             <div class="setting-row" style="border-bottom: none;">
               <div>
-                <div class="setting-label">Start Minimized</div>
-                <div class="setting-desc">Launch minimized to the taskbar.</div>
+                <div class="setting-label" data-i18n="settings.language">Language</div>
+                <div class="setting-desc" data-i18n="settings.languageDesc">Select application interface language.</div>
+              </div>
+              <select id="languageSelect" class="bg-surface border border-border text-sm rounded px-2.5 py-1.5 no-drag text-main focus:outline-none" style="background: var(--bg-surface); color: var(--text); border-color: var(--border);">
+                <option value="en" data-i18n="settings.languageEnglish">English</option>
+                <option value="pt-BR" data-i18n="settings.languagePortuguese">Português do Brasil</option>
+              </select>
+            </div>
+            <div class="setting-row" style="border-bottom: none;">
+              <div>
+                <div class="setting-label" data-i18n="settings.startMinimized">Start Minimized</div>
+                <div class="setting-desc" data-i18n="settings.startMinimizedDesc">Launch minimized to the taskbar.</div>
               </div>
               <button id="toggle-start-minimized" class="toggle-switch" onclick="toggleSetting('start_minimized', this)"></button>
             </div>
             <div class="setting-row" style="border-bottom: none;">
               <div>
-                <div class="setting-label">Auto-Reopen Roblox</div>
-                <div class="setting-desc">If Roblox closes or crashes mid-run, reopen the game and pick the run back up automatically -- so an unattended run survives a crash instead of sitting there stopped. Skipped when other Roblox windows are open (reopening would close them). Default on.</div>
+                <div class="setting-label" data-i18n="settings.autoReopen">Auto-Reopen Roblox</div>
+                <div class="setting-desc" data-i18n="settings.autoReopenDesc">If Roblox closes or crashes mid-run, reopen the game and pick the run back up automatically -- so an unattended run survives a crash instead of sitting there stopped. Skipped when other Roblox windows are open (reopening would close them). Default on.</div>
               </div>
               <button id="toggle-auto-relaunch-roblox" class="toggle-switch" onclick="toggleSetting('auto_relaunch_roblox', this)"></button>
             </div>
@@ -2022,6 +2033,7 @@
   <!-- Before app.js on purpose: app.js calls addLog() (defined here) from the
        moment it loads, and the popped-out log window loads this same file. -->
   <script src="log_view.js"></script>
-  <script src="app.js"></script>
+  <script src="i18n.js" defer></script>
+  <script src="app.js" defer></script>
 </body>
 </html>
