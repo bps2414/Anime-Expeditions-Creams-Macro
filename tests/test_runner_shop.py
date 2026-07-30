@@ -154,6 +154,7 @@ def test_item_search_waits_through_transient_misses_at_the_expected_row(
 
 
 def test_known_item_scroll_steps_match_the_observed_shop_rows():
+    assert runner_shop.SHOP_SCROLL_AMOUNT == -480
     assert runner_shop.SHOP_ITEM_SCROLL_STEPS == {
         "cursed_boba": 0,
         "red_flower": 0,
@@ -203,7 +204,7 @@ def test_item_search_resets_to_top_then_waits_at_the_known_row(monkeypatch):
         for call in runner._mouse.scroll.call_args_list
     ] == [
         (runner_shop.SHOP_SCROLL_RESET_AMOUNT,),
-        (-120,),
+        (runner_shop.SHOP_SCROLL_AMOUNT,),
     ]
 
 
@@ -231,7 +232,7 @@ def test_item_search_keeps_scrolling_until_the_buy_button_is_visible(monkeypatch
         for call in runner._mouse.scroll.call_args_list
     ] == [
         (runner_shop.SHOP_SCROLL_RESET_AMOUNT,),
-        (-120,),
+        (runner_shop.SHOP_SCROLL_AMOUNT,),
     ]
 
 
