@@ -1146,7 +1146,7 @@ def test_auto_shop_card_renders_catalog_targets_and_daily_status(tmp_path):
             {
               key: 'trait_crystal', name: 'Trait Crystal', daily_maximum: 25,
               enabled: true, target: 5,
-              state: { status: 'pending', attempts: 1 }
+              state: { status: 'failed_today', attempts: 3 }
             }
           ]
         }
@@ -1176,7 +1176,8 @@ def test_auto_shop_card_renders_catalog_targets_and_daily_status(tmp_path):
       hasTraitCrystal: html.includes('Trait Crystal'),
       hasMaximum: html.includes('Daily max: 50'),
       hasMaxTarget: html.includes("setAutoShopItemMax('gold_shop', 'cursed_boba')"),
-      hasNumericTarget: html.includes('value="5"')
+      hasNumericTarget: html.includes('value="5"'),
+      hasResetToday: html.includes("resetAutoShopItemToday('gold_shop', 'trait_crystal')")
     }));
     """
     out = run_js(body, tmp_path)
@@ -1188,6 +1189,7 @@ def test_auto_shop_card_renders_catalog_targets_and_daily_status(tmp_path):
         "hasMaximum": True,
         "hasMaxTarget": True,
         "hasNumericTarget": True,
+        "hasResetToday": True,
     }
 
 

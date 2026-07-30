@@ -1555,6 +1555,28 @@ class Api:
         self._save_auto_shop_settings(settings)
         return {"ok": True}
 
+    def reset_auto_shop_item_today(
+            self, shop_key: str, item_key: str) -> dict:
+        settings = self.get_auto_shop_settings()
+        shop = settings["shops"].get(shop_key)
+        if shop is None:
+            return {"ok": False, "reason": "bad_shop"}
+        item = next(
+            (entry for entry in shop["items"] if entry["key"] == item_key),
+            None,
+        )
+        if item is None:
+            return {"ok": False, "reason": "bad_item"}
+        if (
+                (item.get("state") or {}).get("status")
+                != auto_shop.STATUS_FAILED_TODAY):
+            return {"ok": False, "reason": "not_failed_today"}
+        item["state"] = auto_shop.fresh_item_state(
+            current_auto_shop_period()
+        )
+        self._save_auto_shop_settings(settings)
+        return {"ok": True}
+
     def _save_auto_shop_shop_state(self, shop_key: str, state: dict) -> dict:
         settings = self.get_auto_shop_settings()
         shop = settings["shops"].get(shop_key)

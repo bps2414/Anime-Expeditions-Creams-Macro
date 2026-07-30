@@ -3447,6 +3447,10 @@ function renderAutoShopScreen() {
     const runtime = item.state || {};
     const attempts = Number(runtime.attempts || 0);
     const status = autoShopStatusLabel(runtime.status);
+    const resetToday = runtime.status === 'failed_today'
+      ? `<button type="button" class="seg-btn active"
+                 onclick="resetAutoShopItemToday('gold_shop', '${item.key}')">Reset Today</button>`
+      : '';
     return `
       <div class="task-card" data-key="${escapeHtml(item.key)}" style="--tqc: var(--amber); cursor: default;">
         <div class="tq-text" style="min-width: 0; flex: 1;">
@@ -3457,6 +3461,7 @@ function renderAutoShopScreen() {
               <div class="tq-title">${escapeHtml(item.name)}</div>
               <div class="setting-desc">Daily max: ${item.daily_maximum} | ${status}${attempts ? ` | ${attempts}/3 attempts` : ''}</div>
             </div>
+            ${resetToday}
             <div class="seg-toggle" style="width: auto;">
               <button type="button" value="max" class="seg-btn ${isMax ? 'active' : ''}"
                       onclick="setAutoShopItemMax('gold_shop', '${item.key}')">Max</button>
@@ -3522,6 +3527,13 @@ async function setAutoShopItemTarget(shopKey, itemKey, value, dailyMaximum) {
   ));
   try {
     await pywebview.api.set_auto_shop_item_target(shopKey, itemKey, target);
+  } catch (e) {}
+  await refreshAutoShopScreen();
+}
+
+async function resetAutoShopItemToday(shopKey, itemKey) {
+  try {
+    await pywebview.api.reset_auto_shop_item_today(shopKey, itemKey);
   } catch (e) {}
   await refreshAutoShopScreen();
 }

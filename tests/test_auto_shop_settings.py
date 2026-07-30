@@ -132,3 +132,48 @@ def test_changing_a_completed_numeric_target_reopens_daily_evaluation(
     assert cursed_boba["target"] == 10
     assert cursed_boba["state"]["status"] == auto_shop.STATUS_PENDING
     assert cursed_boba["state"]["last_known_left"] == 45
+
+
+def test_failed_today_item_can_be_manually_reset_without_clearing_other_states(
+        monkeypatch, tmp_path):
+    api = _api(monkeypatch, tmp_path)
+    period = current_auto_shop_period()
+    api._save_auto_shop_item_state(
+        "gold_shop",
+        "trait_crystal",
+        {
+            **auto_shop.fresh_item_state(period),
+            "status": auto_shop.STATUS_FAILED_TODAY,
+            "attempts": 3,
+        },
+    )
+    api._save_auto_shop_item_state(
+        "gold_shop",
+        "mana_flask",
+        {
+            **auto_shop.fresh_item_state(period),
+            "status": auto_shop.STATUS_PENDING_VERIFICATION,
+            "last_known_left": 150,
+            "verification": {
+                "before_left": 150,
+                "before_signature": "00",
+            },
+        },
+    )
+
+    assert api.reset_auto_shop_item_today(
+        "gold_shop",
+        "trait_crystal",
+    ) == {"ok": True}
+    assert api.reset_auto_shop_item_today(
+        "gold_shop",
+        "mana_flask",
+    ) == {"ok": False, "reason": "not_failed_today"}
+
+    current = api.get_auto_shop_settings()
+    items = {item["key"]: item for item in current["shops"]["gold_shop"]["items"]}
+    assert items["trait_crystal"]["state"] == auto_shop.fresh_item_state(period)
+    assert (
+        items["mana_flask"]["state"]["status"]
+        == auto_shop.STATUS_PENDING_VERIFICATION
+    )
