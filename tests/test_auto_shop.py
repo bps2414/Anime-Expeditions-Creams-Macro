@@ -31,6 +31,14 @@ AUTO_SHOP_REFERENCE_ITEMS = {
         "stat_lock",
     ),
 }
+KNOWN_GOLD_SHOP_BUY_VARIANTS = {
+    "shop_buy_150.png",
+    "shop_buy_200.png",
+    "shop_buy_250.png",
+    "shop_buy_1000.png",
+    "shop_buy_2500.png",
+    "shop_buy_5000.png",
+}
 
 
 def _epoch(year, month, day, hour=0, minute=0, second=0):
@@ -204,7 +212,22 @@ def test_item_relative_regions_cover_out_of_stock_and_initial_buy():
     match = {"x": 429, "y": 245, "w": 61, "h": 55}
 
     assert auto_shop_vision.stock_status_region_from_item_match(match) == (425, 227, 92, 40)
-    assert auto_shop_vision.initial_buy_region_from_item_match(match) == (401, 375, 132, 38)
+    assert auto_shop_vision.initial_buy_region_from_item_match(match) == (390, 387, 142, 43)
+
+
+def test_initial_buy_region_contains_the_full_live_button():
+    live_mana_flask_match = {"x": 438, "y": 345, "w": 57, "h": 61}
+
+    assert auto_shop_vision.initial_buy_region_from_item_match(
+        live_mana_flask_match
+    ) == (402, 478, 133, 40)
+
+
+def test_shop_buy_template_includes_each_known_price_variant():
+    paths = vision.template_variant_paths("shop_buy")
+    names = {Path(path).name for path in paths}
+
+    assert KNOWN_GOLD_SHOP_BUY_VARIANTS <= names
 
 
 def test_stock_crop_rejects_regions_outside_the_frame():

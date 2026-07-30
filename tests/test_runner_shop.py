@@ -131,7 +131,7 @@ def test_item_search_refinds_after_every_scroll(monkeypatch):
     runner = _runner()
     stop_event = threading.Event()
     item = _settings()["shops"]["gold_shop"]["items"][0]
-    expected = {"x": 429, "y": 325, "w": 61, "h": 55}
+    expected = {"x": 438, "y": 325, "w": 61, "h": 55}
     matches = iter([None, None, expected])
     monkeypatch.setattr(runner, "_checkpoint", lambda _stop: False)
     monkeypatch.setattr(
@@ -156,8 +156,8 @@ def test_item_search_keeps_scrolling_until_the_buy_button_is_visible(monkeypatch
     runner = _runner()
     stop_event = threading.Event()
     item = _settings()["shops"]["gold_shop"]["items"][0]
-    icon_only = {"x": 429, "y": 445, "w": 61, "h": 55}
-    fully_visible = {"x": 429, "y": 325, "w": 61, "h": 55}
+    icon_only = {"x": 438, "y": 445, "w": 61, "h": 55}
+    fully_visible = {"x": 438, "y": 325, "w": 61, "h": 55}
     matches = iter([icon_only, fully_visible])
     monkeypatch.setattr(runner, "_checkpoint", lambda _stop: False)
     monkeypatch.setattr(
