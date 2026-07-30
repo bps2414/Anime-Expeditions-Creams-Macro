@@ -168,6 +168,19 @@ def test_known_item_scroll_steps_match_the_observed_shop_rows():
         "stat_reroll": 3,
         "stat_lock": 4,
     }
+    assert runner_shop.SHOP_ITEM_SCROLL_AMOUNTS == {
+        "cursed_boba": 0,
+        "red_flower": 0,
+        "frown_fruit": -480,
+        "delicious_pie": -480,
+        "mana_flask": -480,
+        "trait_crystal": -480,
+        "sprite_grey": -720,
+        "equipment_reroll": -720,
+        "equipment_lock": -960,
+        "stat_reroll": -960,
+        "stat_lock": -960,
+    }
 
 
 def test_item_search_resets_to_top_then_waits_at_the_known_row(monkeypatch):
@@ -208,6 +221,40 @@ def test_item_search_resets_to_top_then_waits_at_the_known_row(monkeypatch):
     ]
 
 
+def test_sprite_search_uses_the_calibrated_partial_second_row(monkeypatch):
+    settings = _settings({
+        "cursed_boba": {"enabled": False},
+        "sprite_grey": {"enabled": True},
+    })
+    runner = _runner(settings)
+    stop_event = threading.Event()
+    item = next(
+        entry
+        for entry in settings["shops"]["gold_shop"]["items"]
+        if entry["key"] == "sprite_grey"
+    )
+    expected = {"x": 438, "y": 345, "w": 58, "h": 57}
+    monkeypatch.setattr(runner, "_checkpoint", lambda _stop: False)
+    monkeypatch.setattr(
+        "core.runner_shop.vision.wait_for_image",
+        lambda *_args, **_kwargs: expected,
+    )
+    monkeypatch.setattr(
+        "core.runner_shop.vision.ref_to_screen",
+        lambda _hwnd, x, y: (x, y),
+    )
+    monkeypatch.setattr("core.runner_shop.time.sleep", lambda _seconds: None)
+
+    assert runner._shop_find_item(1, item, stop_event) == expected
+    assert [
+        call.args
+        for call in runner._mouse.scroll.call_args_list
+    ] == [
+        (runner_shop.SHOP_SCROLL_RESET_AMOUNT,),
+        (-720,),
+    ]
+
+
 def test_item_search_keeps_scrolling_until_the_buy_button_is_visible(monkeypatch):
     runner = _runner()
     stop_event = threading.Event()
@@ -232,7 +279,7 @@ def test_item_search_keeps_scrolling_until_the_buy_button_is_visible(monkeypatch
         for call in runner._mouse.scroll.call_args_list
     ] == [
         (runner_shop.SHOP_SCROLL_RESET_AMOUNT,),
-        (runner_shop.SHOP_SCROLL_AMOUNT,),
+        (runner_shop.SHOP_SCROLL_REFINEMENT_AMOUNT,),
     ]
 
 

@@ -18,6 +18,7 @@ SHOP_OPEN_TIMEOUT = 10.0
 SHOP_MODAL_TIMEOUT = 4.0
 SHOP_MODAL_CLOSE_TIMEOUT = 5.0
 SHOP_SCROLL_AMOUNT = -480
+SHOP_SCROLL_REFINEMENT_AMOUNT = -120
 SHOP_SCROLL_RESET_AMOUNT = 1200
 SHOP_ITEM_SEARCH_TIMEOUT = 3.0
 SHOP_LIST_CENTER = (545, 410)
@@ -36,6 +37,19 @@ SHOP_ITEM_SCROLL_STEPS = {
     "equipment_lock": 3,
     "stat_reroll": 3,
     "stat_lock": 4,
+}
+SHOP_ITEM_SCROLL_AMOUNTS = {
+    "cursed_boba": 0,
+    "red_flower": 0,
+    "frown_fruit": -480,
+    "delicious_pie": -480,
+    "mana_flask": -480,
+    "trait_crystal": -480,
+    "sprite_grey": -720,
+    "equipment_reroll": -720,
+    "equipment_lock": -960,
+    "stat_reroll": -960,
+    "stat_lock": -960,
 }
 
 _TERMINAL_ITEM_STATUSES = {
@@ -119,10 +133,11 @@ class ShopOps:
         self._mouse.nudge()
         self._mouse.scroll(SHOP_SCROLL_RESET_AMOUNT)
         time.sleep(SHOP_SETTLE_DELAY)
-        for _ in range(target_step):
+        scroll_amount = SHOP_ITEM_SCROLL_AMOUNTS[item["key"]]
+        if scroll_amount:
             if self._checkpoint(stop_event):
                 return None
-            self._mouse.scroll(SHOP_SCROLL_AMOUNT)
+            self._mouse.scroll(scroll_amount)
             time.sleep(SHOP_SETTLE_DELAY)
         if self._checkpoint(stop_event):
             return None
@@ -148,7 +163,7 @@ class ShopOps:
                 f'[Shop] "{item["name"]}" is visible but its controls are '
                 "clipped; scrolling one more step..."
             )
-            self._mouse.scroll(SHOP_SCROLL_AMOUNT)
+            self._mouse.scroll(SHOP_SCROLL_REFINEMENT_AMOUNT)
             time.sleep(SHOP_SETTLE_DELAY)
             try:
                 match = vision.wait_for_image(
