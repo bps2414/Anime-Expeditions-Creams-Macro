@@ -17,6 +17,7 @@ SHOP_LOAD_TIMEOUT = 60.0
 SHOP_OPEN_TIMEOUT = 10.0
 SHOP_MODAL_TIMEOUT = 4.0
 SHOP_BUY_TIMEOUT = 2.0
+SHOP_TERMINAL_TIMEOUT = 2.0
 SHOP_MODAL_CLOSE_TIMEOUT = 5.0
 SHOP_SCROLL_AMOUNT = -480
 SHOP_SCROLL_REFINEMENT_AMOUNT = -120
@@ -56,6 +57,7 @@ SHOP_ITEM_SCROLL_AMOUNTS = {
 _TERMINAL_ITEM_STATUSES = {
     auto_shop.STATUS_COMPLETED,
     auto_shop.STATUS_OUT_OF_STOCK,
+    auto_shop.STATUS_MAX_INVENTORY,
     auto_shop.STATUS_FAILED_TODAY,
 }
 
@@ -233,6 +235,43 @@ class ShopOps:
             "signature": signature,
             "out_of_stock": False,
         }
+
+    def _shop_find_terminal_label(
+            self, hwnd, item_match: dict, stop_event: threading.Event,
+            wait: bool = False):
+        region = auto_shop_vision.card_terminal_region_from_item_match(
+            item_match
+        )
+        names = (
+            auto_shop.AUTO_SHOP_UI_TEMPLATES["out_of_stock"],
+            auto_shop.AUTO_SHOP_UI_TEMPLATES["max_inventory"],
+        )
+        try:
+            if wait:
+                match, name = vision.wait_for_image_any(
+                    hwnd,
+                    names,
+                    region=region,
+                    timeout=SHOP_TERMINAL_TIMEOUT,
+                    stop_event=stop_event,
+                )
+            else:
+                match, name = vision.find_image_any(
+                    hwnd,
+                    names,
+                    region=region,
+                )
+        except vision.TemplateNotFound as exc:
+            self._log(f"[Shop] {exc}")
+            return None
+        return name if match is not None else None
+
+    def _shop_max_inventory_state(
+            self, state: dict, period: str) -> dict:
+        completed = auto_shop.normalize_item_state(state, period)
+        completed["status"] = auto_shop.STATUS_MAX_INVENTORY
+        completed["verification"] = None
+        return completed
 
     def _shop_open_purchase_modal(
             self, hwnd, item_match: dict, stop_event: threading.Event):
@@ -422,14 +461,37 @@ class ShopOps:
             )
             return
 
-        self._set_status(action=f'Reading {item["name"]} stock...')
-        self._log(f'[Shop] Reading stock for "{item["name"]}"...')
-        observation = self._shop_read_observation(
+        terminal_label = self._shop_find_terminal_label(
             hwnd,
-            item,
             match,
             stop_event,
         )
+        if terminal_label == auto_shop.AUTO_SHOP_UI_TEMPLATES["max_inventory"]:
+            self._log(
+                f'[Shop] "{item["name"]}" has Max Inventory; '
+                "skipping stock OCR."
+            )
+            self._shop_save_item_state(
+                shop_key,
+                item_key,
+                self._shop_max_inventory_state(state, period),
+            )
+            return
+        if terminal_label == auto_shop.AUTO_SHOP_UI_TEMPLATES["out_of_stock"]:
+            observation = {
+                "left": 0,
+                "signature": "",
+                "out_of_stock": True,
+            }
+        else:
+            self._set_status(action=f'Reading {item["name"]} stock...')
+            self._log(f'[Shop] Reading stock for "{item["name"]}"...')
+            observation = self._shop_read_observation(
+                hwnd,
+                item,
+                match,
+                stop_event,
+            )
         if observation.get("out_of_stock"):
             self._log(f'[Shop] "{item["name"]}" is out of stock.')
         elif observation.get("left") is not None:
@@ -542,12 +604,50 @@ class ShopOps:
             f'[Shop] Purchase submitted for "{item["name"]}"; '
             "re-reading stock..."
         )
-        after = self._shop_read_observation(
+        terminal_label = self._shop_find_terminal_label(
             hwnd,
-            item,
             match,
             stop_event,
+            wait=True,
         )
+        if terminal_label == auto_shop.AUTO_SHOP_UI_TEMPLATES["max_inventory"]:
+            self._log(
+                f'[Shop] "{item["name"]}" reached Max Inventory '
+                "after purchase."
+            )
+            self._shop_save_item_state(
+                shop_key,
+                item_key,
+                self._shop_max_inventory_state(pending, period),
+            )
+            return
+        if terminal_label == auto_shop.AUTO_SHOP_UI_TEMPLATES["out_of_stock"]:
+            after = {
+                "left": 0,
+                "signature": "",
+                "out_of_stock": True,
+            }
+        else:
+            after = self._shop_read_observation(
+                hwnd,
+                item,
+                match,
+                stop_event,
+            )
+        if after.get("out_of_stock"):
+            self._log(
+                f'[Shop] "{item["name"]}" is out of stock after purchase.'
+            )
+        elif after.get("left") is not None:
+            self._log(
+                f'[Shop] "{item["name"]}" stock after purchase: '
+                f'{after["left"]} left.'
+            )
+        else:
+            self._log(
+                f'[Shop] "{item["name"]}" stock could not be confirmed '
+                "after purchase; verification remains pending."
+            )
         result = auto_shop.classify_stock_verification(
             observation["left"],
             after.get("left"),

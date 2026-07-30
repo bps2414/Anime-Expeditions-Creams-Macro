@@ -21,6 +21,7 @@ STOCK_REGION_BASE_HEIGHT = 24
 STOCK_REGION_TIGHT_HEIGHT = 18
 STOCK_STATUS_FROM_ITEM = (-4, -18, 90, 39)
 INITIAL_BUY_FROM_ITEM = (-38, 140, 140, 42)
+CARD_TERMINAL_FROM_ITEM = (-38, -18, 140, 200)
 
 CANCEL_ANCHOR_BASE_WIDTH = 181
 AMOUNT_INPUT_FROM_CANCEL = (-185, -46, 48, 29)
@@ -85,6 +86,11 @@ def stock_status_region_from_item_match(match: Mapping) -> tuple:
 def initial_buy_region_from_item_match(match: Mapping) -> tuple:
     """Return the card's first Buy button bounds without matching its price."""
     return _region_from_item_match(match, INITIAL_BUY_FROM_ITEM)
+
+
+def card_terminal_region_from_item_match(match: Mapping) -> tuple:
+    """Return the card area containing terminal stock and inventory labels."""
+    return _region_from_item_match(match, CARD_TERMINAL_FROM_ITEM)
 
 
 def crop_region(frame_bgr: np.ndarray, region: tuple) -> np.ndarray:

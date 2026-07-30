@@ -213,6 +213,9 @@ def test_item_relative_regions_cover_out_of_stock_and_initial_buy():
 
     assert auto_shop_vision.stock_status_region_from_item_match(match) == (425, 227, 92, 40)
     assert auto_shop_vision.initial_buy_region_from_item_match(match) == (390, 387, 142, 43)
+    assert auto_shop_vision.card_terminal_region_from_item_match(
+        match
+    ) == (390, 227, 142, 203)
 
 
 def test_initial_buy_region_contains_the_full_live_button():
@@ -356,6 +359,22 @@ def test_item_stops_after_three_failures_and_resets_next_period():
 
     reset = auto_shop.normalize_item_state(state, "2026-07-31")
     assert reset == auto_shop.fresh_item_state("2026-07-31")
+
+
+def test_max_inventory_is_terminal_only_for_the_current_period():
+    state = {
+        **auto_shop.fresh_item_state("2026-07-30"),
+        "status": "max_inventory",
+    }
+
+    assert (
+        auto_shop.normalize_item_state(state, "2026-07-30")["status"]
+        == "max_inventory"
+    )
+    assert (
+        auto_shop.normalize_item_state(state, "2026-07-31")["status"]
+        == auto_shop.STATUS_PENDING
+    )
 
 
 def test_navigation_failures_have_a_separate_daily_limit():

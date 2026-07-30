@@ -23,6 +23,7 @@ STATUS_PENDING = "pending"
 STATUS_PENDING_VERIFICATION = "pending_verification"
 STATUS_COMPLETED = "completed"
 STATUS_OUT_OF_STOCK = "out_of_stock"
+STATUS_MAX_INVENTORY = "max_inventory"
 STATUS_FAILED_TODAY = "failed_today"
 
 VERIFICATION_PROGRESS = "progress"
@@ -44,6 +45,7 @@ AUTO_SHOP_UI_TEMPLATES = {
     "amount_input": "shop_amount_input",
     "cancel": "shop_cancel",
     "out_of_stock": "shop_out_of_stock",
+    "max_inventory": "shop_max_inventory",
 }
 
 AUTO_SHOP_ITEMS = (
@@ -78,6 +80,7 @@ _VALID_STATUSES = {
     STATUS_PENDING_VERIFICATION,
     STATUS_COMPLETED,
     STATUS_OUT_OF_STOCK,
+    STATUS_MAX_INVENTORY,
     STATUS_FAILED_TODAY,
 }
 

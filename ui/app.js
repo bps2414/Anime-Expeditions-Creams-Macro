@@ -3392,6 +3392,7 @@ function autoShopStatusLabel(status) {
   return {
     completed: 'Complete',
     out_of_stock: 'Out of stock',
+    max_inventory: 'Max inventory',
     failed_today: 'Failed today',
     pending_verification: 'Verifying',
     pending: 'Pending',
@@ -3413,7 +3414,9 @@ function renderAutoShopScreen() {
   const items = (goldShop && goldShop.items) || [];
   const enabledItems = items.filter(item => item.enabled);
   const completeItems = enabledItems.filter(
-    item => ['completed', 'out_of_stock'].includes((item.state || {}).status)
+    item => ['completed', 'out_of_stock', 'max_inventory'].includes(
+      (item.state || {}).status
+    )
   );
 
   const summary = document.getElementById('resource-auto-shop-summary');

@@ -443,6 +443,33 @@ def test_missing_purchase_modal_records_one_failure(monkeypatch):
     assert saved[-1][2]["status"] == auto_shop.STATUS_PENDING
 
 
+def test_max_inventory_skips_stock_ocr_and_finishes_the_item(monkeypatch):
+    saved = []
+    runner = _runner(saved_items=saved)
+    item = _settings()["shops"]["gold_shop"]["items"][0]
+    stop_event = threading.Event()
+    match = {"x": 429, "y": 245, "w": 61, "h": 55}
+    read_observation = MagicMock(
+        return_value={"left": 0, "signature": "", "out_of_stock": True}
+    )
+    runner._log = MagicMock()
+    monkeypatch.setattr(runner, "_shop_find_item", lambda *_args: match)
+    monkeypatch.setattr(runner, "_shop_read_observation", read_observation)
+    monkeypatch.setattr(
+        runner,
+        "_shop_find_terminal_label",
+        lambda *_args, **_kwargs: "shop_max_inventory",
+        raising=False,
+    )
+
+    runner._shop_process_item(1, "gold_shop", item, stop_event)
+
+    read_observation.assert_not_called()
+    assert saved[-1][2]["status"] == "max_inventory"
+    messages = [call.args[0] for call in runner._log.call_args_list]
+    assert any("Max Inventory" in message for message in messages)
+
+
 def test_stop_during_buy_lookup_does_not_record_an_item_failure(monkeypatch):
     saved = []
     runner = _runner(saved_items=saved)
@@ -546,6 +573,48 @@ def test_confirmed_numeric_purchase_marks_completed_without_a_second_buy(monkeyp
     assert any("Reading stock" in message for message in messages)
     assert any("Opening purchase" in message for message in messages)
     assert any("re-reading stock" in message for message in messages)
+
+
+def test_out_of_stock_after_purchase_is_logged_and_saved(monkeypatch):
+    saved = []
+    runner = _runner(saved_items=saved)
+    item = _settings()["shops"]["gold_shop"]["items"][0]
+    stop_event = threading.Event()
+    read_observation = MagicMock(
+        return_value={"left": 50, "signature": "00", "out_of_stock": False}
+    )
+    terminal_labels = iter([None, "shop_out_of_stock"])
+    monkeypatch.setattr(
+        runner,
+        "_shop_find_item",
+        lambda *_args: {"x": 429, "y": 245, "w": 61, "h": 55},
+    )
+    monkeypatch.setattr(
+        runner,
+        "_shop_read_observation",
+        read_observation,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_shop_find_terminal_label",
+        lambda *_args, **_kwargs: next(terminal_labels),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_shop_open_purchase_modal",
+        lambda *_args: {"x": 579, "y": 420, "w": 181, "h": 28},
+    )
+    monkeypatch.setattr(runner, "_shop_configure_amount", lambda *_args: True)
+    monkeypatch.setattr(runner, "_shop_confirm_purchase", lambda *_args: True)
+    runner._log = MagicMock()
+
+    runner._shop_process_item(1, "gold_shop", item, stop_event)
+
+    assert saved[-1][2]["status"] == auto_shop.STATUS_OUT_OF_STOCK
+    read_observation.assert_called_once()
+    messages = [call.args[0] for call in runner._log.call_args_list]
+    assert any("out of stock after purchase" in message for message in messages)
 
 
 def test_confirmed_purchase_reuses_the_current_scroll_position(monkeypatch):
