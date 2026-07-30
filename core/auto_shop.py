@@ -96,6 +96,59 @@ def item_definition(item_key: str) -> Mapping:
         raise ValueError(f"Unknown Auto Shop item: {item_key}") from exc
 
 
+def default_auto_shop_settings() -> dict:
+    """Return the disabled, safest-first settings for the Gold Shop."""
+    return {
+        "enabled": False,
+        "shops": {
+            "gold_shop": {
+                "enabled": False,
+                "items": {
+                    item["key"]: {"enabled": False, "target": 1}
+                    for item in AUTO_SHOP_ITEMS
+                },
+            },
+        },
+    }
+
+
+def normalize_auto_shop_settings(saved: Optional[Mapping]) -> dict:
+    """Merge persisted input into the known catalog without trusting its shape."""
+    defaults = default_auto_shop_settings()
+    if not isinstance(saved, Mapping):
+        return defaults
+
+    defaults["enabled"] = bool(saved.get("enabled", False))
+    saved_shops = saved.get("shops")
+    if not isinstance(saved_shops, Mapping):
+        return defaults
+    saved_gold_shop = saved_shops.get("gold_shop")
+    if not isinstance(saved_gold_shop, Mapping):
+        return defaults
+
+    gold_shop = defaults["shops"]["gold_shop"]
+    gold_shop["enabled"] = bool(saved_gold_shop.get("enabled", False))
+    saved_items = saved_gold_shop.get("items")
+    if not isinstance(saved_items, Mapping):
+        return defaults
+
+    for item in AUTO_SHOP_ITEMS:
+        item_key = item["key"]
+        saved_item = saved_items.get(item_key)
+        if not isinstance(saved_item, Mapping):
+            continue
+        target = saved_item.get("target", 1)
+        try:
+            target = normalize_target(target, int(item["stock"]))
+        except ValueError:
+            target = 1
+        gold_shop["items"][item_key] = {
+            "enabled": bool(saved_item.get("enabled", False)),
+            "target": target,
+        }
+    return defaults
+
+
 def normalize_target(target: Union[str, int], daily_maximum: int) -> Union[str, int]:
     """Validate a numeric daily target or the special ``max`` target."""
     if isinstance(target, str) and target.strip().lower() == "max":

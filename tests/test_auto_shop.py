@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from core import auto_shop
+from core import auto_shop_vision
 from core import vision
 
 
@@ -43,6 +44,43 @@ def test_auto_shop_uses_the_same_utc_midnight_reset_as_challenge():
     assert auto_shop.AUTO_SHOP_RESET_SCHEDULE == main.CHALLENGE_RESET_SCHEDULE
     assert auto_shop.current_auto_shop_period(_epoch(2026, 7, 29, 23, 59, 59)) == "2026-07-29"
     assert auto_shop.current_auto_shop_period(_epoch(2026, 7, 30, 0, 0, 0)) == "2026-07-30"
+
+
+def test_auto_shop_settings_are_disabled_and_safe_by_default():
+    settings = auto_shop.default_auto_shop_settings()
+
+    assert settings["enabled"] is False
+    assert settings["shops"]["gold_shop"]["enabled"] is False
+    assert set(settings["shops"]["gold_shop"]["items"]) == {
+        item["key"] for item in auto_shop.AUTO_SHOP_ITEMS
+    }
+    assert all(
+        value == {"enabled": False, "target": 1}
+        for value in settings["shops"]["gold_shop"]["items"].values()
+    )
+
+
+def test_auto_shop_settings_normalize_known_items_and_reject_unsafe_targets():
+    settings = auto_shop.normalize_auto_shop_settings({
+        "enabled": True,
+        "shops": {
+            "gold_shop": {
+                "enabled": True,
+                "items": {
+                    "cursed_boba": {"enabled": True, "target": "Max"},
+                    "red_flower": {"enabled": True, "target": 999},
+                    "unknown_item": {"enabled": True, "target": "max"},
+                },
+            },
+        },
+    })
+
+    gold_shop = settings["shops"]["gold_shop"]
+    assert settings["enabled"] is True
+    assert gold_shop["enabled"] is True
+    assert gold_shop["items"]["cursed_boba"] == {"enabled": True, "target": "max"}
+    assert gold_shop["items"]["red_flower"] == {"enabled": True, "target": 1}
+    assert "unknown_item" not in gold_shop["items"]
 
 
 def test_purchase_plan_counts_manual_purchases_toward_numeric_target():
@@ -110,6 +148,40 @@ def test_visual_signature_detects_a_small_text_change():
 
     assert auto_shop.stock_signature_distance(before_signature, after_signature) > 0
     assert auto_shop.stock_signature_distance(before_signature, before_signature) == 0
+
+
+def test_stock_region_tracks_the_current_item_match_after_scroll():
+    first = auto_shop_vision.stock_region_from_item_match({"x": 234, "y": 102, "w": 61, "h": 55})
+    scrolled = auto_shop_vision.stock_region_from_item_match({"x": 234, "y": 302, "w": 61, "h": 55})
+
+    assert first == (222, 84, 65, 18)
+    assert scrolled == (222, 284, 65, 18)
+
+
+def test_stock_crop_rejects_regions_outside_the_frame():
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
+
+    assert auto_shop_vision.crop_region(frame, (10, 20, 30, 15)).shape == (15, 30, 3)
+    with pytest.raises(ValueError):
+        auto_shop_vision.crop_region(frame, (-1, 20, 30, 15))
+
+
+def test_stock_ocr_consensus_uses_three_independent_crops(monkeypatch):
+    readings = iter([[50, 50, 5], [50, 50], [5, 5]])
+    monkeypatch.setattr(auto_shop_vision, "_ocr_values", lambda _crop, _maximum: next(readings))
+    crops = [np.zeros((18, 64, 3), dtype=np.uint8) for _ in range(3)]
+
+    assert auto_shop_vision.read_left_consensus(crops, 50) == 50
+
+
+def test_stock_ocr_vote_rejects_single_reads_and_ties(monkeypatch):
+    crop = np.zeros((18, 64, 3), dtype=np.uint8)
+
+    monkeypatch.setattr(auto_shop_vision, "_ocr_values", lambda _crop, _maximum: [75, 75, 7])
+    assert auto_shop_vision.read_left_count(crop, 75) == 75
+
+    monkeypatch.setattr(auto_shop_vision, "_ocr_values", lambda _crop, _maximum: [75, 7])
+    assert auto_shop_vision.read_left_count(crop, 75) is None
 
 
 def test_stock_verification_requires_ocr_and_visual_change_to_agree():
