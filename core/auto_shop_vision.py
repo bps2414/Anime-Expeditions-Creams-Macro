@@ -17,7 +17,10 @@ STOCK_REGION_BASE_ICON_WIDTH = 60
 STOCK_REGION_BASE_LEFT = -12
 STOCK_REGION_BASE_TOP = -18
 STOCK_REGION_BASE_WIDTH = 64
-STOCK_REGION_BASE_HEIGHT = 18
+STOCK_REGION_BASE_HEIGHT = 24
+STOCK_REGION_TIGHT_HEIGHT = 18
+STOCK_STATUS_FROM_ITEM = (-4, -18, 90, 39)
+INITIAL_BUY_FROM_ITEM = (-28, 128, 130, 37)
 
 CANCEL_ANCHOR_BASE_WIDTH = 181
 AMOUNT_INPUT_FROM_CANCEL = (-185, -46, 48, 29)
@@ -52,6 +55,36 @@ def stock_region_from_item_match(match: Mapping) -> tuple:
     region_width = max(1, round(STOCK_REGION_BASE_WIDTH * scale))
     region_height = max(1, round(STOCK_REGION_BASE_HEIGHT * scale))
     return region_x, region_y, region_width, region_height
+
+
+def _region_from_item_match(match: Mapping, relative_region: tuple) -> tuple:
+    try:
+        x = int(match["x"])
+        y = int(match["y"])
+        width = int(match["w"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Item match must contain integer x, y, and w values") from exc
+    if width <= 0:
+        raise ValueError("Item match width must be positive")
+
+    scale = width / STOCK_REGION_BASE_ICON_WIDTH
+    offset_x, offset_y, region_width, region_height = relative_region
+    return (
+        x + round(offset_x * scale),
+        y + round(offset_y * scale),
+        max(1, round(region_width * scale)),
+        max(1, round(region_height * scale)),
+    )
+
+
+def stock_status_region_from_item_match(match: Mapping) -> tuple:
+    """Return the larger item-relative region that can contain Out of Stock."""
+    return _region_from_item_match(match, STOCK_STATUS_FROM_ITEM)
+
+
+def initial_buy_region_from_item_match(match: Mapping) -> tuple:
+    """Return the card's first Buy button bounds without matching its price."""
+    return _region_from_item_match(match, INITIAL_BUY_FROM_ITEM)
 
 
 def crop_region(frame_bgr: np.ndarray, region: tuple) -> np.ndarray:
@@ -141,15 +174,31 @@ def _ocr_values(crop_bgr: np.ndarray, daily_maximum: int) -> list:
 
 def read_left_count(crop_bgr: np.ndarray, daily_maximum: int) -> Optional[int]:
     """Read one bounded stock count through a strict preprocessing vote."""
+    def strict_vote(values):
+        if not values:
+            return None
+        ranked = Counter(values).most_common()
+        best_value, best_votes = ranked[0]
+        second_votes = ranked[1][1] if len(ranked) > 1 else 0
+        if best_votes < 2 or best_votes == second_votes:
+            return None
+        return best_value
+
+    height = crop_bgr.shape[0]
+    tight_height = round(
+        height * STOCK_REGION_TIGHT_HEIGHT / STOCK_REGION_BASE_HEIGHT
+    )
+    if 0 < tight_height < height:
+        tight_value = strict_vote(
+            _ocr_values(crop_bgr[:tight_height], daily_maximum)
+        )
+        if tight_value is not None:
+            return tight_value
+
     values = _ocr_values(crop_bgr, daily_maximum)
     if not values:
         return None
-    ranked = Counter(values).most_common()
-    best_value, best_votes = ranked[0]
-    second_votes = ranked[1][1] if len(ranked) > 1 else 0
-    if best_votes < 2 or best_votes == second_votes:
-        return None
-    return best_value
+    return strict_vote(values)
 
 
 def read_left_consensus(crops_bgr: Iterable[np.ndarray], daily_maximum: int) -> Optional[int]:

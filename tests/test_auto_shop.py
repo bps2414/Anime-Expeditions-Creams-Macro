@@ -12,6 +12,25 @@ from core import vision
 
 UTC = timezone.utc
 AUTO_SHOP_REFERENCES = Path(__file__).resolve().parents[1] / "Assets" / "reference" / "auto_shop"
+AUTO_SHOP_REFERENCE_ITEMS = {
+    "gold_shop_top.png": (
+        "cursed_boba",
+        "red_flower",
+        "frown_fruit",
+        "delicious_pie",
+    ),
+    "gold_shop_middle.png": (
+        "mana_flask",
+        "trait_crystal",
+        "sprite_grey",
+        "equipment_reroll",
+    ),
+    "gold_shop_bottom.png": (
+        "equipment_lock",
+        "stat_reroll",
+        "stat_lock",
+    ),
+}
 
 
 def _epoch(year, month, day, hour=0, minute=0, second=0):
@@ -38,6 +57,20 @@ def test_auto_shop_catalog_has_every_gold_shop_item_and_asset():
         assert vision.template_variant_paths(item["template"])
     for template in auto_shop.AUTO_SHOP_UI_TEMPLATES.values():
         assert vision.template_variant_paths(template)
+
+
+def test_every_item_icon_matches_its_real_scrolled_shop_reference():
+    for filename, item_keys in AUTO_SHOP_REFERENCE_ITEMS.items():
+        frame = cv2.imread(
+            str(AUTO_SHOP_REFERENCES / filename),
+            cv2.IMREAD_GRAYSCALE,
+        )
+        assert frame is not None
+        for item_key in item_keys:
+            template = auto_shop.item_definition(item_key)["template"]
+            assert vision.find_in_gray_multiscale(frame, template), (
+                f"{item_key} did not match {filename}"
+            )
 
 
 def test_auto_shop_uses_the_same_utc_midnight_reset_as_challenge():
@@ -163,8 +196,15 @@ def test_stock_region_tracks_the_current_item_match_after_scroll():
     first = auto_shop_vision.stock_region_from_item_match({"x": 234, "y": 102, "w": 61, "h": 55})
     scrolled = auto_shop_vision.stock_region_from_item_match({"x": 234, "y": 302, "w": 61, "h": 55})
 
-    assert first == (222, 84, 65, 18)
-    assert scrolled == (222, 284, 65, 18)
+    assert first == (222, 84, 65, 24)
+    assert scrolled == (222, 284, 65, 24)
+
+
+def test_item_relative_regions_cover_out_of_stock_and_initial_buy():
+    match = {"x": 429, "y": 245, "w": 61, "h": 55}
+
+    assert auto_shop_vision.stock_status_region_from_item_match(match) == (425, 227, 92, 40)
+    assert auto_shop_vision.initial_buy_region_from_item_match(match) == (401, 375, 132, 38)
 
 
 def test_stock_crop_rejects_regions_outside_the_frame():
@@ -233,6 +273,21 @@ def test_stock_ocr_vote_rejects_single_reads_and_ties(monkeypatch):
 
     monkeypatch.setattr(auto_shop_vision, "_ocr_values", lambda _crop, _maximum: [75, 7])
     assert auto_shop_vision.read_left_count(crop, 75) is None
+
+
+def test_stock_ocr_uses_an_expanded_crop_when_the_tight_vote_is_ambiguous(
+        monkeypatch):
+    crop = np.zeros((24, 64, 3), dtype=np.uint8)
+    heights = []
+
+    def readings(candidate, _maximum):
+        heights.append(candidate.shape[0])
+        return [1] if candidate.shape[0] < crop.shape[0] else [10, 10, 10]
+
+    monkeypatch.setattr(auto_shop_vision, "_ocr_values", readings)
+
+    assert auto_shop_vision.read_left_count(crop, 10) == 10
+    assert heights == [18, 24]
 
 
 def test_stock_verification_requires_ocr_and_visual_change_to_agree():

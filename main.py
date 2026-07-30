@@ -498,7 +498,9 @@ class Api:
             self.get_challenge_settings, self.mark_challenge_stage_played, self._run_stats_snapshot,
             self.get_crafting_settings, self.set_crafting_count, self.get_bounty_settings,
             self.set_bounty_remaining, self.get_fuel_settings, self.mark_fuel_refill_result,
-            self.get_hotkeys)
+            self.get_hotkeys,
+            self.get_auto_shop_settings, self._save_auto_shop_item_state,
+            self._save_auto_shop_shop_state)
 
     def _run_stats_snapshot(self) -> dict:
         # Fed to the runner's match-result webhook so it can report the same
@@ -1536,12 +1538,20 @@ class Api:
         if item is None:
             return {"ok": False, "reason": "bad_item"}
         try:
-            item["target"] = auto_shop.normalize_target(
+            normalized_target = auto_shop.normalize_target(
                 target,
                 item["daily_maximum"],
             )
         except ValueError:
             return {"ok": False, "reason": "bad_target"}
+        previous_target = item["target"]
+        item["target"] = normalized_target
+        if (
+                normalized_target != previous_target
+                and (item.get("state") or {}).get("status")
+                == auto_shop.STATUS_COMPLETED):
+            item["state"]["status"] = auto_shop.STATUS_PENDING
+            item["state"]["verification"] = None
         self._save_auto_shop_settings(settings)
         return {"ok": True}
 

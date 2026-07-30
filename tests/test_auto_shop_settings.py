@@ -1,3 +1,4 @@
+from core import auto_shop
 from core import settings
 from core.auto_shop import AUTO_SHOP_ITEMS, STATUS_FAILED_TODAY, current_auto_shop_period
 from main import Api
@@ -103,3 +104,31 @@ def test_auto_shop_utc_rollover_resets_runtime_state_but_keeps_configuration(
     assert cursed_boba["state"]["period"] == second_period
     assert cursed_boba["state"]["status"] == "pending"
     assert cursed_boba["state"]["attempts"] == 0
+
+
+def test_changing_a_completed_numeric_target_reopens_daily_evaluation(
+        monkeypatch, tmp_path):
+    api = _api(monkeypatch, tmp_path)
+    period = current_auto_shop_period()
+    api.set_auto_shop_item_target("gold_shop", "cursed_boba", 5)
+    api._save_auto_shop_item_state(
+        "gold_shop",
+        "cursed_boba",
+        {
+            **auto_shop.fresh_item_state(period),
+            "status": auto_shop.STATUS_COMPLETED,
+            "last_known_left": 45,
+        },
+    )
+
+    api.set_auto_shop_item_target("gold_shop", "cursed_boba", 10)
+    current = api.get_auto_shop_settings()
+    cursed_boba = next(
+        item
+        for item in current["shops"]["gold_shop"]["items"]
+        if item["key"] == "cursed_boba"
+    )
+
+    assert cursed_boba["target"] == 10
+    assert cursed_boba["state"]["status"] == auto_shop.STATUS_PENDING
+    assert cursed_boba["state"]["last_known_left"] == 45
