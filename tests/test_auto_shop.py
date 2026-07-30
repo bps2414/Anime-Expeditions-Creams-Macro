@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -10,6 +11,7 @@ from core import vision
 
 
 UTC = timezone.utc
+AUTO_SHOP_REFERENCES = Path(__file__).resolve().parents[1] / "Assets" / "reference" / "auto_shop"
 
 
 def _epoch(year, month, day, hour=0, minute=0, second=0):
@@ -117,6 +119,13 @@ def test_max_target_uses_every_remaining_item():
     assert plan["pending_amount"] == 17
 
 
+def test_numeric_target_never_types_above_the_available_stock():
+    plan = auto_shop.calculate_purchase_plan("cursed_boba", 50, current_left=3)
+
+    assert plan["already_bought"] == 47
+    assert plan["pending_amount"] == 3
+
+
 def test_zero_stock_is_terminal_out_of_stock():
     plan = auto_shop.calculate_purchase_plan("equipment_lock", "max", current_left=0)
 
@@ -164,6 +173,48 @@ def test_stock_crop_rejects_regions_outside_the_frame():
     assert auto_shop_vision.crop_region(frame, (10, 20, 30, 15)).shape == (15, 30, 3)
     with pytest.raises(ValueError):
         auto_shop_vision.crop_region(frame, (-1, 20, 30, 15))
+
+
+def test_modal_regions_are_anchored_to_cancel_in_reference_space():
+    cancel = {"x": 579, "y": 420, "w": 181, "h": 28}
+
+    assert auto_shop_vision.amount_input_region_from_cancel(cancel) == (394, 374, 48, 29)
+    assert auto_shop_vision.amount_toggle_region_from_cancel(cancel) == (710, 374, 48, 29)
+    assert auto_shop_vision.final_buy_region_from_cancel(cancel) == (389, 417, 185, 36)
+    assert auto_shop_vision.cancel_click_point(cancel) == (754, 434)
+
+
+def test_modal_transition_distinguishes_no_currency_success_and_abort():
+    assert (
+        auto_shop_vision.classify_modal_transition(False, False)
+        == auto_shop_vision.MODAL_NOT_OPENED
+    )
+    assert auto_shop_vision.classify_modal_transition(False, True) == auto_shop_vision.MODAL_OPENED
+    assert (
+        auto_shop_vision.classify_modal_transition(True, False)
+        == auto_shop_vision.MODAL_CLOSED_AFTER_BUY
+    )
+    assert (
+        auto_shop_vision.classify_modal_transition(True, True)
+        == auto_shop_vision.MODAL_REMAINS_AFTER_BUY
+    )
+    assert auto_shop_vision.classify_modal_transition(True, None) == auto_shop_vision.MODAL_UNKNOWN
+
+
+def test_full_reference_screens_confirm_modal_toggle_and_out_of_stock_assets():
+    max_frame = cv2.imread(str(AUTO_SHOP_REFERENCES / "buy_amount_max_full.png"), cv2.IMREAD_GRAYSCALE)
+    min_frame = cv2.imread(str(AUTO_SHOP_REFERENCES / "buy_amount_min_full.png"), cv2.IMREAD_GRAYSCALE)
+    stock_frame = cv2.imread(
+        str(AUTO_SHOP_REFERENCES / "gold_shop_out_of_stock_full.png"),
+        cv2.IMREAD_GRAYSCALE,
+    )
+
+    max_cancel = vision.find_in_gray_multiscale(max_frame, "shop_cancel")
+    min_cancel = vision.find_in_gray_multiscale(min_frame, "shop_cancel")
+    assert max_cancel and min_cancel
+    assert vision.find_in_gray_multiscale(max_frame, "shop_amount_min")
+    assert vision.find_in_gray_multiscale(min_frame, "shop_amount_max")
+    assert vision.find_in_gray_multiscale(stock_frame, "shop_out_of_stock")
 
 
 def test_stock_ocr_consensus_uses_three_independent_crops(monkeypatch):

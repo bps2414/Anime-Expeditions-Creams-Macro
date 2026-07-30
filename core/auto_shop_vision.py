@@ -19,6 +19,17 @@ STOCK_REGION_BASE_TOP = -18
 STOCK_REGION_BASE_WIDTH = 64
 STOCK_REGION_BASE_HEIGHT = 18
 
+CANCEL_ANCHOR_BASE_WIDTH = 181
+AMOUNT_INPUT_FROM_CANCEL = (-185, -46, 48, 29)
+AMOUNT_TOGGLE_FROM_CANCEL = (131, -46, 48, 29)
+FINAL_BUY_FROM_CANCEL = (-190, -3, 185, 36)
+
+MODAL_OPENED = "opened"
+MODAL_NOT_OPENED = "not_opened"
+MODAL_CLOSED_AFTER_BUY = "closed_after_buy"
+MODAL_REMAINS_AFTER_BUY = "remains_after_buy"
+MODAL_UNKNOWN = "unknown"
+
 _OCR_CONFIG = "--psm 7 -c tessedit_char_whitelist=0123456789"
 _OCR_SHARPEN_AMOUNTS = (0.0, 1.5)
 
@@ -54,6 +65,63 @@ def crop_region(frame_bgr: np.ndarray, region: tuple) -> np.ndarray:
     if x < 0 or y < 0 or x + width > frame_width or y + height > frame_height:
         raise ValueError("Stock region falls outside the captured frame")
     return frame_bgr[y:y + height, x:x + width].copy()
+
+
+def _region_from_cancel(cancel_match: Mapping, relative_region: tuple) -> tuple:
+    try:
+        x = int(cancel_match["x"])
+        y = int(cancel_match["y"])
+        width = int(cancel_match["w"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Cancel match must contain integer x, y, and w values") from exc
+    if width <= 0:
+        raise ValueError("Cancel match width must be positive")
+
+    scale = width / CANCEL_ANCHOR_BASE_WIDTH
+    offset_x, offset_y, region_width, region_height = relative_region
+    return (
+        x + round(offset_x * scale),
+        y + round(offset_y * scale),
+        max(1, round(region_width * scale)),
+        max(1, round(region_height * scale)),
+    )
+
+
+def amount_input_region_from_cancel(cancel_match: Mapping) -> tuple:
+    """Return the numeric input bounds anchored to the visible Cancel button."""
+    return _region_from_cancel(cancel_match, AMOUNT_INPUT_FROM_CANCEL)
+
+
+def amount_toggle_region_from_cancel(cancel_match: Mapping) -> tuple:
+    """Return the Max/Min toggle bounds anchored to the Cancel button."""
+    return _region_from_cancel(cancel_match, AMOUNT_TOGGLE_FROM_CANCEL)
+
+
+def final_buy_region_from_cancel(cancel_match: Mapping) -> tuple:
+    """Return the confirmation Buy bounds without matching its variable price."""
+    return _region_from_cancel(cancel_match, FINAL_BUY_FROM_CANCEL)
+
+
+def cancel_click_point(cancel_match: Mapping) -> tuple:
+    """Return the required far-right, inside-button Cancel click point."""
+    try:
+        return auto_shop.cancel_right_edge_point(
+            int(cancel_match["x"]),
+            int(cancel_match["y"]),
+            int(cancel_match["w"]),
+            int(cancel_match["h"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("Cancel match must contain integer x, y, w, and h values") from exc
+
+
+def classify_modal_transition(was_open: bool, is_open: Optional[bool]) -> str:
+    """Classify the modal around the initial or final Buy click."""
+    if is_open is None:
+        return MODAL_UNKNOWN
+    if not was_open:
+        return MODAL_OPENED if is_open else MODAL_NOT_OPENED
+    return MODAL_REMAINS_AFTER_BUY if is_open else MODAL_CLOSED_AFTER_BUY
 
 
 def _ocr_values(crop_bgr: np.ndarray, daily_maximum: int) -> list:
