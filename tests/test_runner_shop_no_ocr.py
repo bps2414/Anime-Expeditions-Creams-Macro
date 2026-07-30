@@ -30,8 +30,8 @@ def _item(target=5):
     }
 
 
-def test_visible_numeric_purchase_never_reads_stock_before_marking_today(monkeypatch):
-    """A stock-reader regression must not re-enter the no-OCR purchase path."""
+def test_visible_numeric_purchase_remains_due_without_reading_stock(monkeypatch):
+    """A numeric purchase must repeat on later passes until the card is terminal."""
     saved_items = []
     runner = _runner(saved_items)
     cancel = {"x": 579, "y": 420, "w": 181, "h": 28}
@@ -53,8 +53,29 @@ def test_visible_numeric_purchase_never_reads_stock_before_marking_today(monkeyp
     )
 
     runner._shop_read_observation.assert_not_called()
-    assert saved_items[-1][2]["status"] == auto_shop.STATUS_COMPLETED
+    assert saved_items[-1][2]["status"] == auto_shop.STATUS_PENDING
     assert saved_items[-1][2]["verification"] is None
+
+
+def test_visible_max_purchase_is_completed_for_the_current_day(monkeypatch):
+    saved_items = []
+    runner = _runner(saved_items)
+    cancel = {"x": 579, "y": 420, "w": 181, "h": 28}
+    item = _item(target="max")
+    monkeypatch.setattr(runner, "_shop_find_terminal_label", lambda *_args: None)
+    monkeypatch.setattr(runner, "_shop_open_purchase_modal", lambda *_args: cancel)
+    monkeypatch.setattr(runner, "_shop_configure_amount", lambda *_args: True)
+    monkeypatch.setattr(runner, "_shop_confirm_purchase", lambda *_args: True)
+
+    runner._shop_process_visible_item(
+        1,
+        "gold_shop",
+        item,
+        {"x": 429, "y": 245, "w": 61, "h": 55},
+        threading.Event(),
+    )
+
+    assert saved_items[-1][2]["status"] == auto_shop.STATUS_COMPLETED
 
 
 def test_visible_purchase_with_uncertain_modal_requires_a_manual_today_reset(monkeypatch):
@@ -79,31 +100,22 @@ def test_visible_purchase_with_uncertain_modal_requires_a_manual_today_reset(mon
     assert saved_items[-1][2]["status"] == auto_shop.STATUS_FAILED_TODAY
 
 
-def test_visible_item_lookup_scrolls_forward_without_resetting_the_list(monkeypatch):
-    """A new row must advance from the current view instead of restarting shop."""
+def test_visible_item_lookup_does_not_scroll_when_the_card_is_clipped(monkeypatch):
+    """Row alignment owns scrolling, so an item miss cannot move later cards."""
     runner = _runner([])
     item = _item()
     clipped = {"x": 429, "y": 445, "w": 61, "h": 55}
-    full = {"x": 429, "y": 325, "w": 61, "h": 55}
-    matches = iter([clipped, full])
     monkeypatch.setattr(runner, "_checkpoint", lambda _stop: False)
     monkeypatch.setattr(
         "core.runner_shop.vision.find_image",
-        lambda *_args, **_kwargs: next(matches),
+        lambda *_args, **_kwargs: clipped,
     )
-    monkeypatch.setattr(
-        "core.runner_shop.vision.ref_to_screen",
-        lambda _hwnd, x, y: (x, y),
-    )
-    monkeypatch.setattr("core.runner_shop.time.sleep", lambda _seconds: None)
 
-    assert runner._shop_find_visible_item(1, item, threading.Event()) == full
-    assert [call.args for call in runner._mouse.scroll.call_args_list] == [
-        (runner_shop.SHOP_FORWARD_SCROLL_AMOUNT,),
-    ]
+    assert runner._shop_find_visible_item(1, item, threading.Event()) is None
+    runner._mouse.scroll.assert_not_called()
 
 
-def test_stat_lock_lookup_forces_bottom_before_searching_its_buyable_card(monkeypatch):
+def test_stat_lock_row_alignment_forces_bottom_before_searching(monkeypatch):
     """Stat Lock must not be clicked from a partially scrolled Bottom view."""
     runner = _runner([])
     item = {
@@ -127,7 +139,12 @@ def test_stat_lock_lookup_forces_bottom_before_searching_its_buyable_card(monkey
     )
     monkeypatch.setattr("core.runner_shop.time.sleep", lambda _seconds: None)
 
-    assert runner._shop_find_visible_item(1, item, threading.Event()) is not None
+    assert runner._shop_align_visible_row(
+        1,
+        [item],
+        threading.Event(),
+        force_bottom=True,
+    )
     assert events[0] == ("scroll", runner_shop.SHOP_BOTTOM_SCROLL_AMOUNT)
     assert events[-1] == ("find", None)
 
@@ -146,6 +163,11 @@ def test_no_ocr_sweep_resets_once_then_keeps_a_single_forward_item_order(monkeyp
         side_effect=AssertionError("The legacy finder resets the list per item")
     )
     monkeypatch.setattr(runner, "_checkpoint", lambda _stop: False)
+    monkeypatch.setattr(
+        runner,
+        "_shop_align_visible_row",
+        lambda *_args, **_kwargs: True,
+    )
     monkeypatch.setattr(
         runner,
         "_shop_find_visible_item",
@@ -171,6 +193,59 @@ def test_no_ocr_sweep_resets_once_then_keeps_a_single_forward_item_order(monkeyp
     assert [call.args for call in runner._mouse.scroll.call_args_list] == [
         (runner_shop.SHOP_SCROLL_RESET_AMOUNT,),
     ]
+
+
+def test_failed_item_match_does_not_scroll_past_the_following_row(monkeypatch):
+    """One missing card must not consume the scroll budget for later cards."""
+    runner = _runner([])
+    items = [
+        _item(),
+        {**_item(), "key": "red_flower", "name": "Red Flower", "daily_maximum": 75},
+        {**_item(), "key": "frown_fruit", "name": "Frown Fruit", "daily_maximum": 100},
+        {
+            **_item(),
+            "key": "delicious_pie",
+            "name": "Delicious Pie",
+            "daily_maximum": 125,
+        },
+    ]
+    row = 0
+    processed = []
+
+    def scroll(amount):
+        nonlocal row
+        row = 0 if amount > 0 else min(5, row + 1)
+
+    visible_rows = {
+        "shop_cursed_boba": 0,
+        "shop_red_flower": None,
+        "shop_frown_fruit": 1,
+        "shop_delicious_pie": 1,
+    }
+
+    def find_image(_hwnd, template, **_kwargs):
+        if visible_rows[template] != row:
+            return None
+        return {"x": 429, "y": 325, "w": 61, "h": 55, "cx": 459, "cy": 352}
+
+    runner._mouse.scroll.side_effect = scroll
+    monkeypatch.setattr(runner, "_checkpoint", lambda _stop: False)
+    monkeypatch.setattr("core.runner_shop.vision.find_image", find_image)
+    monkeypatch.setattr(
+        runner,
+        "_shop_process_visible_item",
+        lambda _hwnd, _shop, item, _match, _stop: processed.append(item["key"]),
+    )
+    monkeypatch.setattr(
+        "core.runner_shop.vision.ref_to_screen",
+        lambda _hwnd, x, y: (x, y),
+    )
+    monkeypatch.setattr("core.runner_shop.time.sleep", lambda _seconds: None)
+
+    runner._shop_run_no_ocr_sweep(1, "gold_shop", items, threading.Event())
+
+    assert processed == ["cursed_boba", "frown_fruit", "delicious_pie"]
+    assert row == 1
 
 
 def test_auto_shop_run_delegates_enabled_items_to_the_no_ocr_sweep(monkeypatch):
@@ -262,7 +337,7 @@ def test_public_auto_shop_run_never_reaches_stock_ocr(monkeypatch):
     runner._run_auto_shop(1, threading.Event())
 
     runner._shop_read_observation.assert_not_called()
-    assert saved_items[-1][2]["status"] == auto_shop.STATUS_COMPLETED
+    assert saved_items[-1][2]["status"] == auto_shop.STATUS_PENDING
 
 
 def test_open_modal_clicks_the_green_buy_region_without_matching_a_price(monkeypatch):
@@ -292,7 +367,7 @@ def test_open_modal_clicks_the_green_buy_region_without_matching_a_price(monkeyp
 
     assert runner._shop_open_purchase_modal(1, item_match, threading.Event()) == cancel
     assert clicked == [
-        {"x": 390, "y": 387, "w": 142, "h": 43, "cx": 461, "cy": 408},
+        {"x": 391, "y": 382, "w": 140, "h": 42, "cx": 461, "cy": 403},
     ]
 
 

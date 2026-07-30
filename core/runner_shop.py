@@ -58,6 +58,14 @@ SHOP_ITEM_SCROLL_AMOUNTS = {
     "stat_reroll": -960,
     "stat_lock": -960,
 }
+SHOP_SWEEP_ROWS = (
+    ("cursed_boba", "red_flower"),
+    ("frown_fruit", "delicious_pie"),
+    ("mana_flask", "trait_crystal"),
+    ("sprite_grey", "equipment_reroll"),
+    ("equipment_lock", "stat_reroll"),
+    ("stat_lock",),
+)
 
 _TERMINAL_ITEM_STATUSES = {
     auto_shop.STATUS_COMPLETED,
@@ -198,35 +206,48 @@ class ShopOps:
 
     def _shop_find_visible_item(
             self, hwnd, item: dict, stop_event: threading.Event):
-        """Find a fully actionable card while preserving the current list position."""
-        if item["key"] == "stat_lock":
-            x, y = vision.ref_to_screen(hwnd, *SHOP_LIST_CENTER)
-            self._mouse.move_to(x, y)
-            self._mouse.nudge()
+        """Find one actionable card without changing the current list position."""
+        if self._checkpoint(stop_event):
+            return None
+        template = auto_shop.item_definition(item["key"])["template"]
+        try:
+            match = vision.find_image(
+                hwnd,
+                template,
+                region=SHOP_LIST_VIEWPORT,
+            )
+        except vision.TemplateNotFound as exc:
+            self._log(f"[Shop] {exc}")
+            return None
+        if match is None:
+            return None
+        stock_region = auto_shop_vision.stock_status_region_from_item_match(match)
+        buy_region = auto_shop_vision.initial_buy_region_from_item_match(match)
+        if (
+                self._shop_region_is_visible(stock_region)
+                and self._shop_region_is_visible(buy_region)):
+            return match
+        return None
+
+    def _shop_align_visible_row(
+            self, hwnd, row_items: list, stop_event: threading.Event,
+            force_bottom: bool = False) -> bool:
+        """Move the list as one row while checking every stable row anchor."""
+        x, y = vision.ref_to_screen(hwnd, *SHOP_LIST_CENTER)
+        self._mouse.move_to(x, y)
+        self._mouse.nudge()
+        if force_bottom:
             self._mouse.scroll(SHOP_BOTTOM_SCROLL_AMOUNT)
             time.sleep(SHOP_LIST_SETTLE_DELAY)
 
-        template = auto_shop.item_definition(item["key"])["template"]
         for attempt in range(SHOP_VISIBLE_ITEM_SCROLL_ATTEMPTS):
             if self._checkpoint(stop_event):
-                return None
-            try:
-                match = vision.find_image(
-                    hwnd,
-                    template,
-                    region=SHOP_LIST_VIEWPORT,
-                )
-            except vision.TemplateNotFound as exc:
-                self._log(f"[Shop] {exc}")
-                return None
-            if match is not None:
-                stock_region = auto_shop_vision.stock_status_region_from_item_match(match)
-                buy_region = auto_shop_vision.initial_buy_region_from_item_match(match)
-                if (
-                        self._shop_region_is_visible(stock_region)
-                        and self._shop_region_is_visible(buy_region)):
-                    return match
-
+                return False
+            if any(
+                    self._shop_find_visible_item(hwnd, item, stop_event)
+                    is not None
+                    for item in row_items):
+                return True
             if attempt + 1 >= SHOP_VISIBLE_ITEM_SCROLL_ATTEMPTS:
                 break
             x, y = vision.ref_to_screen(hwnd, *SHOP_LIST_CENTER)
@@ -234,12 +255,7 @@ class ShopOps:
             self._mouse.nudge()
             self._mouse.scroll(SHOP_FORWARD_SCROLL_AMOUNT)
             time.sleep(SHOP_LIST_SETTLE_DELAY)
-
-        self._log(
-            f'[Shop] "{item["name"]}" was not found with its Buy '
-            "button fully visible."
-        )
-        return None
+        return False
 
     def _shop_run_no_ocr_sweep(
             self, hwnd, shop_key: str, items: list,
@@ -251,24 +267,49 @@ class ShopOps:
         self._mouse.scroll(SHOP_SCROLL_RESET_AMOUNT)
         time.sleep(SHOP_LIST_SETTLE_DELAY)
 
-        catalog_order = {
-            definition["key"]: index
-            for index, definition in enumerate(auto_shop.AUTO_SHOP_ITEMS)
-        }
-        for item in sorted(items, key=lambda entry: catalog_order[entry["key"]]):
-            if self._checkpoint(stop_event):
-                return
-            self._set_status(action=f'Checking {item["name"]}...')
-            match = self._shop_find_visible_item(hwnd, item, stop_event)
-            if match is None:
+        due_by_key = {item["key"]: item for item in items}
+        for row_keys in SHOP_SWEEP_ROWS:
+            row_items = [
+                due_by_key[item_key]
+                for item_key in row_keys
+                if item_key in due_by_key
+            ]
+            if not row_items:
                 continue
-            self._shop_process_visible_item(
-                hwnd,
-                shop_key,
-                item,
-                match,
-                stop_event,
-            )
+            row_anchors = [
+                auto_shop.item_definition(item_key)
+                for item_key in row_keys
+            ]
+            if not self._shop_align_visible_row(
+                    hwnd,
+                    row_anchors,
+                    stop_event,
+                    force_bottom=row_keys == ("stat_lock",)):
+                names = ", ".join(item["name"] for item in row_items)
+                self._log(
+                    f"[Shop] The row containing {names} could not be "
+                    "aligned safely."
+                )
+                continue
+
+            for item in row_items:
+                if self._checkpoint(stop_event):
+                    return
+                self._set_status(action=f'Checking {item["name"]}...')
+                match = self._shop_find_visible_item(hwnd, item, stop_event)
+                if match is None:
+                    self._log(
+                        f'[Shop] "{item["name"]}" was not found in its '
+                        "aligned shop row."
+                    )
+                    continue
+                self._shop_process_visible_item(
+                    hwnd,
+                    shop_key,
+                    item,
+                    match,
+                    stop_event,
+                )
 
     def _shop_read_observation(
             self, hwnd, item: dict, item_match: dict,
@@ -591,11 +632,20 @@ class ShopOps:
             )
             return
 
-        completed = auto_shop.normalize_item_state(state, period)
-        completed["status"] = auto_shop.STATUS_COMPLETED
-        completed["verification"] = None
-        self._shop_save_item_state(shop_key, item_key, completed)
-        self._log(f'[Shop] "{item["name"]}" purchase executed today.')
+        updated = auto_shop.normalize_item_state(state, period)
+        updated["attempts"] = 0
+        updated["verification"] = None
+        if str(target).lower() == "max":
+            updated["status"] = auto_shop.STATUS_COMPLETED
+            message = f'[Shop] "{item["name"]}" purchase executed today.'
+        else:
+            updated["status"] = auto_shop.STATUS_PENDING
+            message = (
+                f'[Shop] "{item["name"]}" purchase executed; it remains '
+                "scheduled until stock is exhausted."
+            )
+        self._shop_save_item_state(shop_key, item_key, updated)
+        self._log(message)
 
     def _shop_process_item(
             self, hwnd, shop_key: str, item: dict,

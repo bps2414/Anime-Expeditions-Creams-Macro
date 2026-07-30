@@ -122,6 +122,27 @@ def test_buy_color_classifier_rejects_out_of_stock_gray_buttons():
         assert not auto_shop_vision.buy_button_is_enabled(crop)
 
 
+def test_terminal_region_contains_each_real_out_of_stock_label():
+    frame = cv2.imread(
+        str(AUTO_SHOP_REFERENCES / "gold_shop_out_of_stock_full.png"),
+        cv2.IMREAD_GRAYSCALE,
+    )
+    for item_key in ("cursed_boba", "red_flower"):
+        match = vision.find_in_gray_multiscale(
+            frame,
+            auto_shop.item_definition(item_key)["template"],
+        )
+        x, y, width, height = (
+            auto_shop_vision.card_terminal_region_from_item_match(match)
+        )
+        terminal_crop = frame[y:y + height, x:x + width]
+
+        assert vision.find_in_gray_multiscale(
+            terminal_crop,
+            auto_shop.AUTO_SHOP_UI_TEMPLATES["out_of_stock"],
+        ), f"{item_key} terminal region clipped Out of Stock"
+
+
 def test_auto_shop_uses_the_same_utc_midnight_reset_as_challenge():
     import main
 
@@ -245,18 +266,18 @@ def test_stock_region_tracks_the_current_item_match_after_scroll():
     first = auto_shop_vision.stock_region_from_item_match({"x": 234, "y": 102, "w": 61, "h": 55})
     scrolled = auto_shop_vision.stock_region_from_item_match({"x": 234, "y": 302, "w": 61, "h": 55})
 
-    assert first == (222, 84, 65, 24)
-    assert scrolled == (222, 284, 65, 24)
+    assert first == (222, 81, 64, 24)
+    assert scrolled == (222, 281, 64, 24)
 
 
 def test_item_relative_regions_cover_out_of_stock_and_initial_buy():
     match = {"x": 429, "y": 245, "w": 61, "h": 55}
 
-    assert auto_shop_vision.stock_status_region_from_item_match(match) == (425, 227, 92, 40)
-    assert auto_shop_vision.initial_buy_region_from_item_match(match) == (390, 387, 142, 43)
+    assert auto_shop_vision.stock_status_region_from_item_match(match) == (425, 217, 90, 46)
+    assert auto_shop_vision.initial_buy_region_from_item_match(match) == (391, 382, 140, 42)
     assert auto_shop_vision.card_terminal_region_from_item_match(
         match
-    ) == (390, 227, 142, 203)
+    ) == (391, 217, 140, 207)
 
 
 def test_initial_buy_region_contains_the_full_live_button():
@@ -264,7 +285,22 @@ def test_initial_buy_region_contains_the_full_live_button():
 
     assert auto_shop_vision.initial_buy_region_from_item_match(
         live_mana_flask_match
-    ) == (402, 478, 133, 40)
+    ) == (398, 485, 140, 42)
+
+
+def test_buy_region_uses_the_icon_center_for_wide_item_templates():
+    delicious_pie_match = {
+        "x": 429,
+        "y": 245,
+        "w": 67,
+        "h": 53,
+        "cx": 462,
+        "cy": 271,
+    }
+
+    assert auto_shop_vision.initial_buy_region_from_item_match(
+        delicious_pie_match
+    ) == (394, 381, 140, 42)
 
 
 def test_shop_buy_template_includes_each_known_price_variant():

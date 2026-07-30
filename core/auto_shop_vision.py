@@ -13,15 +13,12 @@ import numpy as np
 from . import auto_shop, ocr
 
 
-STOCK_REGION_BASE_ICON_WIDTH = 60
-STOCK_REGION_BASE_LEFT = -12
-STOCK_REGION_BASE_TOP = -18
-STOCK_REGION_BASE_WIDTH = 64
-STOCK_REGION_BASE_HEIGHT = 24
+STOCK_REGION_FROM_CENTER = (-42, -48, 64, 24)
+STOCK_REGION_BASE_HEIGHT = STOCK_REGION_FROM_CENTER[3]
 STOCK_REGION_TIGHT_HEIGHT = 18
-STOCK_STATUS_FROM_ITEM = (-4, -18, 90, 39)
-INITIAL_BUY_FROM_ITEM = (-38, 140, 140, 42)
-CARD_TERMINAL_FROM_ITEM = (-38, -18, 140, 200)
+STOCK_STATUS_FROM_CENTER = (-34, -55, 90, 46)
+INITIAL_BUY_FROM_CENTER = (-68, 110, 140, 42)
+CARD_TERMINAL_FROM_CENTER = (-68, -55, 140, 207)
 
 CANCEL_ANCHOR_BASE_WIDTH = 181
 AMOUNT_INPUT_FROM_CANCEL = (-185, -46, 48, 29)
@@ -41,22 +38,7 @@ BUY_BUTTON_GREEN_MIN_FRACTION = 0.06
 
 def stock_region_from_item_match(match: Mapping) -> tuple:
     """Derive the ``Left!`` crop from the freshly located item icon."""
-    try:
-        x = int(match["x"])
-        y = int(match["y"])
-        width = int(match["w"])
-        height = int(match["h"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError("Item match must contain integer x, y, w, and h values") from exc
-    if width <= 0 or height <= 0:
-        raise ValueError("Item match dimensions must be positive")
-
-    scale = width / STOCK_REGION_BASE_ICON_WIDTH
-    region_x = x + round(STOCK_REGION_BASE_LEFT * scale)
-    region_y = y + round(STOCK_REGION_BASE_TOP * scale)
-    region_width = max(1, round(STOCK_REGION_BASE_WIDTH * scale))
-    region_height = max(1, round(STOCK_REGION_BASE_HEIGHT * scale))
-    return region_x, region_y, region_width, region_height
+    return _region_from_item_match(match, STOCK_REGION_FROM_CENTER)
 
 
 def _region_from_item_match(match: Mapping, relative_region: tuple) -> tuple:
@@ -64,34 +46,38 @@ def _region_from_item_match(match: Mapping, relative_region: tuple) -> tuple:
         x = int(match["x"])
         y = int(match["y"])
         width = int(match["w"])
+        height = int(match["h"])
     except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError("Item match must contain integer x, y, and w values") from exc
-    if width <= 0:
-        raise ValueError("Item match width must be positive")
+        raise ValueError(
+            "Item match must contain integer x, y, w, and h values"
+        ) from exc
+    if width <= 0 or height <= 0:
+        raise ValueError("Item match dimensions must be positive")
 
-    scale = width / STOCK_REGION_BASE_ICON_WIDTH
+    center_x = int(match.get("cx", x + width // 2))
+    center_y = int(match.get("cy", y + height // 2))
     offset_x, offset_y, region_width, region_height = relative_region
     return (
-        x + round(offset_x * scale),
-        y + round(offset_y * scale),
-        max(1, round(region_width * scale)),
-        max(1, round(region_height * scale)),
+        center_x + int(offset_x),
+        center_y + int(offset_y),
+        max(1, int(region_width)),
+        max(1, int(region_height)),
     )
 
 
 def stock_status_region_from_item_match(match: Mapping) -> tuple:
     """Return the larger item-relative region that can contain Out of Stock."""
-    return _region_from_item_match(match, STOCK_STATUS_FROM_ITEM)
+    return _region_from_item_match(match, STOCK_STATUS_FROM_CENTER)
 
 
 def initial_buy_region_from_item_match(match: Mapping) -> tuple:
     """Return the card's first Buy button bounds without matching its price."""
-    return _region_from_item_match(match, INITIAL_BUY_FROM_ITEM)
+    return _region_from_item_match(match, INITIAL_BUY_FROM_CENTER)
 
 
 def card_terminal_region_from_item_match(match: Mapping) -> tuple:
     """Return the card area containing terminal stock and inventory labels."""
-    return _region_from_item_match(match, CARD_TERMINAL_FROM_ITEM)
+    return _region_from_item_match(match, CARD_TERMINAL_FROM_CENTER)
 
 
 def crop_region(frame_bgr: np.ndarray, region: tuple) -> np.ndarray:

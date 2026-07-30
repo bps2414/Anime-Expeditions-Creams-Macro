@@ -12,16 +12,19 @@ own layout manifest without changing the Gold Shop rules.
 
 ## Confirmed purchase semantics
 
-- A numeric target `N` means: attempt to buy up to `N` units once during the
-  current UTC day. The game may clamp the entered value to the remaining stock.
+- A numeric target `N` means: attempt to buy up to `N` units once per safe
+  Auto Shop pass. The item remains scheduled until the card shows `Out of
+  Stock` or `Max Inventory`. The game may clamp the entered value to the
+  remaining stock.
 - `Max` means: select the modal's Max action and purchase the remaining stock
   once during the current UTC day.
 - Manual purchases are intentionally not subtracted from numeric targets. No
   screen number is read to infer them.
 - A closed purchase modal after the macro clicked the final Buy is sufficient
-  confirmation that the single daily purchase attempt was accepted.
-- The UI must describe a successful numeric action as executed today, not as
-  an exact total owned or an exact number confirmed from stock.
+  confirmation that the current purchase attempt was accepted.
+- The UI must describe a successful numeric action as executed and still
+  scheduled, not as an exact total owned or an exact number confirmed from
+  stock.
 
 This deliberately trades exact manual-purchase reconciliation for speed and
 predictability. Without reading a game number, it is impossible to calculate
@@ -101,8 +104,9 @@ For each enabled, identity-confirmed slot:
      click the final Buy control derived from Cancel;
    - for a numeric target, focus the input derived from Cancel, enter the
      number, then click the final Buy control.
-5. Treat disappearance of Cancel after the final Buy as success and persist a
-   one-time executed-today state. Do not reread the card or scan stock.
+5. Treat disappearance of Cancel after the final Buy as success. Complete a
+   `Max` target for the day; keep a numeric target pending for the next safe
+   pass. Do not reread the card or scan stock.
 6. If Cancel remains, click the required far-right point inside Cancel and
    mark the item Failed Today with a Reset Today action. It must not receive
    another automatic Buy click in the same UTC day without a user reset.
@@ -115,7 +119,8 @@ dangerous retry in the current shop visit.
 ## Safety invariants
 
 - No OCR function is imported or called by the Gold Shop runtime path.
-- At most one final Buy click is issued for an item in one UTC period.
+- At most one final Buy click is issued for an item in one shop visit. `Max`
+  remains limited to one confirmed purchase per UTC period.
 - An ambiguous card identity, scroll position, button state, or modal state
   always results in no Buy click.
 - The macro does not reset the list to the top between cards.

@@ -294,7 +294,7 @@ def test_purchase_modal_clicks_the_green_buy_region_inside_the_item_card(monkeyp
     runner = _runner()
     stop_event = threading.Event()
     item_match = {"x": 429, "y": 245, "w": 61, "h": 55}
-    buy_match = {"x": 390, "y": 387, "w": 142, "h": 43, "cx": 461, "cy": 408}
+    buy_match = {"x": 391, "y": 382, "w": 140, "h": 42, "cx": 461, "cy": 403}
     cancel_match = {"x": 579, "y": 420, "w": 181, "h": 28}
     clicked = []
     monkeypatch.setattr(
@@ -322,7 +322,7 @@ def test_purchase_modal_waits_only_for_cancel_after_clicking_green_buy(monkeypat
     runner = _runner()
     stop_event = threading.Event()
     item_match = {"x": 429, "y": 245, "w": 61, "h": 55}
-    buy_match = {"x": 390, "y": 387, "w": 142, "h": 43, "cx": 461, "cy": 408}
+    buy_match = {"x": 391, "y": 382, "w": 140, "h": 42, "cx": 461, "cy": 403}
     cancel_match = {"x": 579, "y": 420, "w": 181, "h": 28}
     waited = []
     clicked = []
