@@ -37,6 +37,7 @@ MAX_TOGGLE_UNKNOWN = "unknown"
 AUTO_SHOP_UI_TEMPLATES = {
     "navigation": "nav_shop",
     "destination": "area_gold_shop",
+    "shop_tab": "shop_gold_tab",
     "buy": "shop_buy",
     "amount_max": "shop_amount_max",
     "amount_min": "shop_amount_min",

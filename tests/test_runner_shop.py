@@ -296,4 +296,6 @@ def test_gold_shop_navigation_waits_for_teleport_before_camera_and_interaction(
     assert events.index("nav_play_gone") < events.index("focus")
     assert events.index("focus") < events.index("camera")
     assert events.index("camera") < events.index(f"key:{ord('E')}")
+    assert events.index(f"key:{ord('E')}") < events.index("click:shop_gold_tab")
+    assert events.index("click:shop_gold_tab") < events.index("wait:shop_cursed_boba")
     assert events[-1] == "wait:shop_cursed_boba"

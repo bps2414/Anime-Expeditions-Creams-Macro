@@ -489,6 +489,18 @@ class ShopOps:
         time.sleep(0.5)
         camera.tilt_camera_top_down(self._mouse, hwnd)
         self._keyboard.tap(ord("E"))
+        self._set_status(action="Selecting Gold Shop...")
+        if self._click_found_image(
+                hwnd,
+                auto_shop.AUTO_SHOP_UI_TEMPLATES["shop_tab"],
+                SHOP_OPEN_TIMEOUT,
+                stop_event,
+        ) is None:
+            self._log("[Shop] Couldn't find the Gold Shop tab after pressing E.")
+            return False
+        if self._checkpoint(stop_event):
+            return False
+        time.sleep(SHOP_SETTLE_DELAY)
         try:
             opened = vision.wait_for_image(
                 hwnd,
