@@ -2,6 +2,7 @@ import threading
 from unittest.mock import MagicMock
 
 from core import auto_shop
+from core import auto_shop_vision
 from core import runner_shop
 from core.runner import MacroRunner
 
@@ -291,18 +292,14 @@ def test_purchase_modal_clicks_the_buy_template_inside_the_item_region(monkeypat
     cancel_match = {"x": 579, "y": 420, "w": 181, "h": 28}
     clicked = []
     monkeypatch.setattr(
-        "core.runner_shop.vision.find_image",
-        lambda _hwnd, name, **_kwargs: (
-            buy_match if name == "shop_buy" else None
-        ),
-    )
-    monkeypatch.setattr(
         "core.runner_shop.vision.click_match",
         lambda _mouse, _hwnd, match: clicked.append(match),
     )
     monkeypatch.setattr(
         "core.runner_shop.vision.wait_for_image",
-        lambda *_args, **_kwargs: cancel_match,
+        lambda _hwnd, name, **_kwargs: (
+            buy_match if name == "shop_buy" else cancel_match
+        ),
     )
 
     assert runner._shop_open_purchase_modal(
@@ -310,6 +307,48 @@ def test_purchase_modal_clicks_the_buy_template_inside_the_item_region(monkeypat
         item_match,
         stop_event,
     ) == cancel_match
+    assert clicked == [buy_match]
+
+
+def test_purchase_modal_waits_for_a_transient_buy_button(monkeypatch):
+    runner = _runner()
+    stop_event = threading.Event()
+    item_match = {"x": 429, "y": 245, "w": 61, "h": 55}
+    buy_match = {"x": 410, "y": 380, "w": 116, "h": 33, "cx": 468, "cy": 396}
+    cancel_match = {"x": 579, "y": 420, "w": 181, "h": 28}
+    waited = []
+    clicked = []
+
+    def wait_for_image(_hwnd, name, **kwargs):
+        waited.append((name, kwargs.get("region")))
+        if name == "shop_buy":
+            return buy_match
+        if name == "shop_cancel":
+            return cancel_match
+        return None
+
+    monkeypatch.setattr(
+        "core.runner_shop.vision.find_image",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "core.runner_shop.vision.wait_for_image",
+        wait_for_image,
+    )
+    monkeypatch.setattr(
+        "core.runner_shop.vision.click_match",
+        lambda _mouse, _hwnd, match: clicked.append(match),
+    )
+
+    assert runner._shop_open_purchase_modal(
+        1,
+        item_match,
+        stop_event,
+    ) == cancel_match
+    assert waited[0][0] == "shop_buy"
+    assert waited[0][1] == (
+        auto_shop_vision.initial_buy_region_from_item_match(item_match)
+    )
     assert clicked == [buy_match]
 
 
@@ -423,6 +462,36 @@ def test_confirmed_numeric_purchase_marks_completed_without_a_second_buy(monkeyp
     assert any("Reading stock" in message for message in messages)
     assert any("Opening purchase" in message for message in messages)
     assert any("re-reading stock" in message for message in messages)
+
+
+def test_confirmed_purchase_reuses_the_current_scroll_position(monkeypatch):
+    saved = []
+    runner = _runner(saved_items=saved)
+    item = _settings()["shops"]["gold_shop"]["items"][0]
+    stop_event = threading.Event()
+    item_match = {"x": 429, "y": 245, "w": 61, "h": 55}
+    observations = iter([
+        {"left": 50, "signature": "00", "out_of_stock": False},
+        {"left": 45, "signature": "ff", "out_of_stock": False},
+    ])
+    find_item = MagicMock(return_value=item_match)
+    monkeypatch.setattr(runner, "_shop_find_item", find_item)
+    monkeypatch.setattr(
+        runner,
+        "_shop_read_observation",
+        lambda *_args: next(observations),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_shop_open_purchase_modal",
+        lambda *_args: {"x": 579, "y": 420, "w": 181, "h": 28},
+    )
+    monkeypatch.setattr(runner, "_shop_configure_amount", lambda *_args: True)
+    monkeypatch.setattr(runner, "_shop_confirm_purchase", lambda *_args: True)
+    runner._shop_process_item(1, "gold_shop", item, stop_event)
+
+    find_item.assert_called_once_with(1, item, stop_event)
+    assert saved[-1][2]["status"] == auto_shop.STATUS_COMPLETED
 
 
 def test_gold_shop_navigation_waits_for_teleport_before_camera_and_interaction(

@@ -16,6 +16,7 @@ SHOP_NAV_TIMEOUT = 10.0
 SHOP_LOAD_TIMEOUT = 60.0
 SHOP_OPEN_TIMEOUT = 10.0
 SHOP_MODAL_TIMEOUT = 4.0
+SHOP_BUY_TIMEOUT = 2.0
 SHOP_MODAL_CLOSE_TIMEOUT = 5.0
 SHOP_SCROLL_AMOUNT = -480
 SHOP_SCROLL_REFINEMENT_AMOUNT = -120
@@ -237,9 +238,11 @@ class ShopOps:
             self, hwnd, item_match: dict, stop_event: threading.Event):
         region = auto_shop_vision.initial_buy_region_from_item_match(item_match)
         try:
-            buy_match = vision.find_image(
+            buy_match = vision.wait_for_image(
                 hwnd,
                 auto_shop.AUTO_SHOP_UI_TEMPLATES["buy"],
+                timeout=SHOP_BUY_TIMEOUT,
+                stop_event=stop_event,
                 region=region,
             )
         except vision.TemplateNotFound as exc:
@@ -543,13 +546,10 @@ class ShopOps:
             f'[Shop] Purchase submitted for "{item["name"]}"; '
             "re-reading stock..."
         )
-        refreshed_match = self._shop_find_item(hwnd, item, stop_event)
-        if refreshed_match is None:
-            return
         after = self._shop_read_observation(
             hwnd,
             item,
-            refreshed_match,
+            match,
             stop_event,
         )
         result = auto_shop.classify_stock_verification(
