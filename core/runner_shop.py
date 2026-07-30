@@ -249,6 +249,8 @@ class ShopOps:
             self._log(f"[Shop] {exc}")
             return None
         if buy_match is None:
+            if stop_event.is_set():
+                return None
             self._log(
                 "[Shop] The enabled Buy button was not detected inside "
                 "the visible item card."
@@ -297,17 +299,7 @@ class ShopOps:
                 self._log("[Shop] Neither Max nor Min was detected in the amount modal.")
                 return False
             vision.click_match(self._mouse, hwnd, max_match)
-            time.sleep(SHOP_SETTLE_DELAY)
-            if self._checkpoint(stop_event):
-                return False
-            try:
-                return vision.find_image(
-                    hwnd,
-                    auto_shop.AUTO_SHOP_UI_TEMPLATES["amount_min"],
-                    region=region,
-                ) is not None
-            except vision.TemplateNotFound:
-                return False
+            return not self._checkpoint(stop_event)
 
         region = auto_shop_vision.amount_input_region_from_cancel(cancel_match)
         x, y, width, height = region
@@ -498,6 +490,8 @@ class ShopOps:
             stop_event,
         )
         if cancel_match is None:
+            if stop_event.is_set():
+                return
             self._log(
                 f'[Shop] "{item["name"]}" purchase was not started safely.'
             )
@@ -515,6 +509,8 @@ class ShopOps:
                 stop_event,
         ):
             self._shop_cancel_modal(hwnd, cancel_match)
+            if stop_event.is_set():
+                return
             self._shop_save_item_state(
                 shop_key,
                 item_key,

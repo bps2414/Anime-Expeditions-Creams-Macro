@@ -1,6 +1,8 @@
 import threading
 from unittest.mock import MagicMock
 
+import pytest
+
 from core import auto_shop
 from core import auto_shop_vision
 from core import runner_shop
@@ -102,8 +104,38 @@ def test_max_amount_never_clicks_min_and_clicks_max_when_available(monkeypatch):
         "core.runner_shop.vision.find_image",
         find_toggle,
     )
+    monkeypatch.setattr(
+        "core.runner_shop.vision.wait_for_image",
+        find_toggle,
+    )
     assert runner._shop_configure_amount(1, cancel, "max", 25, stop_event) is True
     assert clicked == [True]
+
+
+def test_max_amount_continues_after_clicking_max_without_rechecking_min(
+        monkeypatch):
+    runner = _runner()
+    stop_event = threading.Event()
+    cancel = {"x": 579, "y": 420, "w": 181, "h": 28}
+    max_match = {"x": 710, "y": 374, "w": 43, "h": 22, "cx": 731, "cy": 385}
+    monkeypatch.setattr(
+        "core.runner_shop.vision.find_image",
+        lambda _hwnd, name, **_kwargs: (
+            max_match if name == "shop_amount_max" else None
+        ),
+    )
+    monkeypatch.setattr(
+        "core.runner_shop.vision.wait_for_image",
+        lambda *_args, **_kwargs: pytest.fail("Min must not be rechecked"),
+    )
+
+    assert runner._shop_configure_amount(
+        1,
+        cancel,
+        "max",
+        25,
+        stop_event,
+    ) is True
 
 
 def test_numeric_amount_types_only_the_calculated_pending_quantity(monkeypatch):
@@ -352,6 +384,30 @@ def test_purchase_modal_waits_for_a_transient_buy_button(monkeypatch):
     assert clicked == [buy_match]
 
 
+def test_stopped_buy_wait_does_not_report_a_missing_button(monkeypatch):
+    runner = _runner()
+    stop_event = threading.Event()
+    item_match = {"x": 429, "y": 245, "w": 61, "h": 55}
+    runner._log = MagicMock()
+
+    def stop_wait(*_args, **_kwargs):
+        stop_event.set()
+        return None
+
+    monkeypatch.setattr(
+        "core.runner_shop.vision.wait_for_image",
+        stop_wait,
+    )
+
+    assert runner._shop_open_purchase_modal(
+        1,
+        item_match,
+        stop_event,
+    ) is None
+    messages = [call.args[0] for call in runner._log.call_args_list]
+    assert not any("enabled Buy button" in message for message in messages)
+
+
 def test_final_buy_that_does_not_close_is_cancelled_at_the_right_edge(monkeypatch):
     runner = _runner()
     cancel = {"x": 579, "y": 420, "w": 181, "h": 28}
@@ -385,6 +441,34 @@ def test_missing_purchase_modal_records_one_failure(monkeypatch):
 
     assert saved[-1][2]["attempts"] == 1
     assert saved[-1][2]["status"] == auto_shop.STATUS_PENDING
+
+
+def test_stop_during_buy_lookup_does_not_record_an_item_failure(monkeypatch):
+    saved = []
+    runner = _runner(saved_items=saved)
+    item = _settings()["shops"]["gold_shop"]["items"][0]
+    stop_event = threading.Event()
+    match = {"x": 429, "y": 245, "w": 61, "h": 55}
+    monkeypatch.setattr(runner, "_shop_find_item", lambda *_args: match)
+    monkeypatch.setattr(
+        runner,
+        "_shop_read_observation",
+        lambda *_args: {"left": 50, "signature": "00", "out_of_stock": False},
+    )
+
+    def stop_during_lookup(*_args):
+        stop_event.set()
+        return None
+
+    monkeypatch.setattr(
+        runner,
+        "_shop_open_purchase_modal",
+        stop_during_lookup,
+    )
+
+    runner._shop_process_item(1, "gold_shop", item, stop_event)
+
+    assert saved == []
 
 
 def test_pending_verification_never_opens_another_purchase_when_still_ambiguous(
