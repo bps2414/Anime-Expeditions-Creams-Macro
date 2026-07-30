@@ -76,40 +76,13 @@ def test_auto_shop_wants_in_only_for_actionable_enabled_items():
     assert _runner(failed_shop)._auto_shop_wants_in() is False
 
 
-def test_max_amount_never_clicks_min_and_clicks_max_when_available(monkeypatch):
+def test_max_amount_clicks_the_control_derived_from_cancel(monkeypatch):
     runner = _runner()
     stop_event = threading.Event()
     cancel = {"x": 579, "y": 420, "w": 181, "h": 28}
-    clicked = []
-    monkeypatch.setattr("core.runner_shop.vision.click_match", lambda *_args: clicked.append(True))
-
-    monkeypatch.setattr(
-        "core.runner_shop.vision.find_image",
-        lambda _hwnd, name, **_kwargs: (
-            {"x": 710, "y": 374, "w": 48, "h": 29, "cx": 734, "cy": 388}
-            if name == "shop_amount_min" else None
-        ),
-    )
+    monkeypatch.setattr("core.runner_shop.vision.ref_to_screen", lambda _hwnd, x, y: (x, y))
     assert runner._shop_configure_amount(1, cancel, "max", 25, stop_event) is True
-    assert clicked == []
-
-    def find_toggle(_hwnd, name, **_kwargs):
-        if name == "shop_amount_min" and clicked:
-            return {"x": 710, "y": 374, "w": 48, "h": 29, "cx": 734, "cy": 388}
-        if name == "shop_amount_max" and not clicked:
-            return {"x": 710, "y": 374, "w": 43, "h": 22, "cx": 731, "cy": 385}
-        return None
-
-    monkeypatch.setattr(
-        "core.runner_shop.vision.find_image",
-        find_toggle,
-    )
-    monkeypatch.setattr(
-        "core.runner_shop.vision.wait_for_image",
-        find_toggle,
-    )
-    assert runner._shop_configure_amount(1, cancel, "max", 25, stop_event) is True
-    assert clicked == [True]
+    runner._mouse.click.assert_called_once_with(734, 388)
 
 
 def test_max_amount_continues_after_clicking_max_without_rechecking_min(
@@ -316,7 +289,7 @@ def test_item_search_keeps_scrolling_until_the_buy_button_is_visible(monkeypatch
     ]
 
 
-def test_purchase_modal_clicks_the_buy_template_inside_the_item_region(monkeypatch):
+def test_purchase_modal_clicks_the_green_buy_region_inside_the_item_card(monkeypatch):
     runner = _runner()
     stop_event = threading.Event()
     item_match = {"x": 429, "y": 245, "w": 61, "h": 55}
@@ -328,10 +301,12 @@ def test_purchase_modal_clicks_the_buy_template_inside_the_item_region(monkeypat
         lambda _mouse, _hwnd, match: clicked.append(match),
     )
     monkeypatch.setattr(
+        "core.runner_shop.vision.find_color_run",
+        lambda *_args, **_kwargs: buy_match,
+    )
+    monkeypatch.setattr(
         "core.runner_shop.vision.wait_for_image",
-        lambda _hwnd, name, **_kwargs: (
-            buy_match if name == "shop_buy" else cancel_match
-        ),
+        lambda _hwnd, name, **_kwargs: cancel_match if name == "shop_cancel" else None,
     )
 
     assert runner._shop_open_purchase_modal(
@@ -342,7 +317,7 @@ def test_purchase_modal_clicks_the_buy_template_inside_the_item_region(monkeypat
     assert clicked == [buy_match]
 
 
-def test_purchase_modal_waits_for_a_transient_buy_button(monkeypatch):
+def test_purchase_modal_waits_only_for_cancel_after_clicking_green_buy(monkeypatch):
     runner = _runner()
     stop_event = threading.Event()
     item_match = {"x": 429, "y": 245, "w": 61, "h": 55}
@@ -353,16 +328,11 @@ def test_purchase_modal_waits_for_a_transient_buy_button(monkeypatch):
 
     def wait_for_image(_hwnd, name, **kwargs):
         waited.append((name, kwargs.get("region")))
-        if name == "shop_buy":
-            return buy_match
         if name == "shop_cancel":
             return cancel_match
         return None
 
-    monkeypatch.setattr(
-        "core.runner_shop.vision.find_image",
-        lambda *_args, **_kwargs: None,
-    )
+    monkeypatch.setattr("core.runner_shop.vision.find_color_run", lambda *_args, **_kwargs: buy_match)
     monkeypatch.setattr(
         "core.runner_shop.vision.wait_for_image",
         wait_for_image,
@@ -377,10 +347,7 @@ def test_purchase_modal_waits_for_a_transient_buy_button(monkeypatch):
         item_match,
         stop_event,
     ) == cancel_match
-    assert waited[0][0] == "shop_buy"
-    assert waited[0][1] == (
-        auto_shop_vision.initial_buy_region_from_item_match(item_match)
-    )
+    assert waited == [("shop_cancel", None)]
     assert clicked == [buy_match]
 
 

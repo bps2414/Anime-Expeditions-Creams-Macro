@@ -21,11 +21,16 @@ SHOP_TERMINAL_TIMEOUT = 2.0
 SHOP_MODAL_CLOSE_TIMEOUT = 5.0
 SHOP_SCROLL_AMOUNT = -480
 SHOP_SCROLL_REFINEMENT_AMOUNT = -120
-SHOP_SCROLL_RESET_AMOUNT = 1200
+SHOP_SCROLL_RESET_AMOUNT = 2400
 SHOP_ITEM_SEARCH_TIMEOUT = 3.0
+SHOP_FORWARD_SCROLL_AMOUNT = -120
+SHOP_BOTTOM_SCROLL_AMOUNT = -4800
+SHOP_VISIBLE_ITEM_SCROLL_ATTEMPTS = 8
 SHOP_LIST_CENTER = (545, 410)
 SHOP_LIST_VIEWPORT = (398, 218, 308, 362)
+SHOP_LIST_ACTION_VIEWPORT = (390, 218, 316, 362)
 SHOP_SETTLE_DELAY = 0.6
+SHOP_LIST_SETTLE_DELAY = 0.3
 SHOP_CAPTURE_INTERVAL = 0.12
 SHOP_ITEM_SCROLL_STEPS = {
     "cursed_boba": 0,
@@ -60,6 +65,15 @@ _TERMINAL_ITEM_STATUSES = {
     auto_shop.STATUS_MAX_INVENTORY,
     auto_shop.STATUS_FAILED_TODAY,
 }
+
+
+def _shop_buy_green_mask(blue, green, red):
+    """Return the saturated green pixels used by enabled Gold Shop buttons."""
+    return (
+        (green > 135)
+        & (green - red > 45)
+        & (green - blue > 70)
+    )
 
 
 class ShopOps:
@@ -115,7 +129,7 @@ class ShopOps:
     @staticmethod
     def _shop_region_is_visible(region: tuple) -> bool:
         x, y, width, height = region
-        view_x, view_y, view_width, view_height = SHOP_LIST_VIEWPORT
+        view_x, view_y, view_width, view_height = SHOP_LIST_ACTION_VIEWPORT
         return (
             x >= view_x
             and y >= view_y
@@ -190,6 +204,80 @@ class ShopOps:
             f"scroll step ({target_step})."
         )
         return None
+
+    def _shop_find_visible_item(
+            self, hwnd, item: dict, stop_event: threading.Event):
+        """Find a fully actionable card while preserving the current list position."""
+        if item["key"] == "stat_lock":
+            x, y = vision.ref_to_screen(hwnd, *SHOP_LIST_CENTER)
+            self._mouse.move_to(x, y)
+            self._mouse.nudge()
+            self._mouse.scroll(SHOP_BOTTOM_SCROLL_AMOUNT)
+            time.sleep(SHOP_LIST_SETTLE_DELAY)
+
+        template = auto_shop.item_definition(item["key"])["template"]
+        for attempt in range(SHOP_VISIBLE_ITEM_SCROLL_ATTEMPTS):
+            if self._checkpoint(stop_event):
+                return None
+            try:
+                match = vision.find_image(
+                    hwnd,
+                    template,
+                    region=SHOP_LIST_VIEWPORT,
+                )
+            except vision.TemplateNotFound as exc:
+                self._log(f"[Shop] {exc}")
+                return None
+            if match is not None:
+                stock_region = auto_shop_vision.stock_status_region_from_item_match(match)
+                buy_region = auto_shop_vision.initial_buy_region_from_item_match(match)
+                if (
+                        self._shop_region_is_visible(stock_region)
+                        and self._shop_region_is_visible(buy_region)):
+                    return match
+
+            if attempt + 1 >= SHOP_VISIBLE_ITEM_SCROLL_ATTEMPTS:
+                break
+            x, y = vision.ref_to_screen(hwnd, *SHOP_LIST_CENTER)
+            self._mouse.move_to(x, y)
+            self._mouse.nudge()
+            self._mouse.scroll(SHOP_FORWARD_SCROLL_AMOUNT)
+            time.sleep(SHOP_LIST_SETTLE_DELAY)
+
+        self._log(
+            f'[Shop] "{item["name"]}" was not found with its Buy '
+            "button fully visible."
+        )
+        return None
+
+    def _shop_run_no_ocr_sweep(
+            self, hwnd, shop_key: str, items: list,
+            stop_event: threading.Event) -> None:
+        """Process enabled Gold Shop cards in one top-to-bottom list sweep."""
+        x, y = vision.ref_to_screen(hwnd, *SHOP_LIST_CENTER)
+        self._mouse.move_to(x, y)
+        self._mouse.nudge()
+        self._mouse.scroll(SHOP_SCROLL_RESET_AMOUNT)
+        time.sleep(SHOP_LIST_SETTLE_DELAY)
+
+        catalog_order = {
+            definition["key"]: index
+            for index, definition in enumerate(auto_shop.AUTO_SHOP_ITEMS)
+        }
+        for item in sorted(items, key=lambda entry: catalog_order[entry["key"]]):
+            if self._checkpoint(stop_event):
+                return
+            self._set_status(action=f'Checking {item["name"]}...')
+            match = self._shop_find_visible_item(hwnd, item, stop_event)
+            if match is None:
+                continue
+            self._shop_process_visible_item(
+                hwnd,
+                shop_key,
+                item,
+                match,
+                stop_event,
+            )
 
     def _shop_read_observation(
             self, hwnd, item: dict, item_match: dict,
@@ -276,23 +364,19 @@ class ShopOps:
     def _shop_open_purchase_modal(
             self, hwnd, item_match: dict, stop_event: threading.Event):
         region = auto_shop_vision.initial_buy_region_from_item_match(item_match)
-        try:
-            buy_match = vision.wait_for_image(
-                hwnd,
-                auto_shop.AUTO_SHOP_UI_TEMPLATES["buy"],
-                timeout=SHOP_BUY_TIMEOUT,
-                stop_event=stop_event,
-                region=region,
-            )
-        except vision.TemplateNotFound as exc:
-            self._log(f"[Shop] {exc}")
-            return None
+        buy_match = vision.find_color_run(
+            hwnd,
+            region,
+            _shop_buy_green_mask,
+            min_run=70,
+            min_height=12,
+        )
         if buy_match is None:
             if stop_event.is_set():
                 return None
             self._log(
-                "[Shop] The enabled Buy button was not detected inside "
-                "the visible item card."
+                "[Shop] The visible Buy region is not enabled; "
+                "no purchase was attempted."
             )
             return None
         vision.click_match(self._mouse, hwnd, buy_match)
@@ -318,26 +402,13 @@ class ShopOps:
             stop_event: threading.Event) -> bool:
         if str(target).lower() == "max":
             region = auto_shop_vision.amount_toggle_region_from_cancel(cancel_match)
-            try:
-                min_match = vision.find_image(
-                    hwnd,
-                    auto_shop.AUTO_SHOP_UI_TEMPLATES["amount_min"],
-                    region=region,
-                )
-                if min_match is not None:
-                    return True
-                max_match = vision.find_image(
-                    hwnd,
-                    auto_shop.AUTO_SHOP_UI_TEMPLATES["amount_max"],
-                    region=region,
-                )
-            except vision.TemplateNotFound as exc:
-                self._log(f"[Shop] {exc}")
-                return False
-            if max_match is None:
-                self._log("[Shop] Neither Max nor Min was detected in the amount modal.")
-                return False
-            vision.click_match(self._mouse, hwnd, max_match)
+            x, y, width, height = region
+            screen_x, screen_y = vision.ref_to_screen(
+                hwnd,
+                x + width // 2,
+                y + height // 2,
+            )
+            self._mouse.click(screen_x, screen_y)
             return not self._checkpoint(stop_event)
 
         region = auto_shop_vision.amount_input_region_from_cancel(cancel_match)
@@ -445,6 +516,92 @@ class ShopOps:
             ready["stock_signature"] = observation.get("signature") or ""
             return ready, True
         return state, False
+
+    def _shop_process_visible_item(
+            self, hwnd, shop_key: str, item: dict, item_match: dict,
+            stop_event: threading.Event) -> None:
+        """Buy one already-visible card without reading its remaining stock."""
+        item_key = item["key"]
+        period = self._shop_state_period(item.get("state") or {})
+        state = auto_shop.normalize_item_state(item.get("state"), period)
+
+        if state["status"] == auto_shop.STATUS_PENDING_VERIFICATION:
+            self._log(
+                f'[Shop] "{item["name"]}" has an uncertain earlier purchase; '
+                "skipping it safely."
+            )
+            self._shop_save_item_state(shop_key, item_key, state)
+            return
+
+        terminal_label = self._shop_find_terminal_label(
+            hwnd,
+            item_match,
+            stop_event,
+        )
+        if terminal_label == auto_shop.AUTO_SHOP_UI_TEMPLATES["max_inventory"]:
+            self._log(f'[Shop] "{item["name"]}" has Max Inventory.')
+            self._shop_save_item_state(
+                shop_key,
+                item_key,
+                self._shop_max_inventory_state(state, period),
+            )
+            return
+        if terminal_label == auto_shop.AUTO_SHOP_UI_TEMPLATES["out_of_stock"]:
+            completed = auto_shop.normalize_item_state(state, period)
+            completed["status"] = auto_shop.STATUS_OUT_OF_STOCK
+            completed["verification"] = None
+            self._log(f'[Shop] "{item["name"]}" is out of stock.')
+            self._shop_save_item_state(shop_key, item_key, completed)
+            return
+
+        target = item["target"]
+        amount = int(item["daily_maximum"])
+        if str(target).lower() != "max":
+            amount = int(target)
+        self._set_status(action=f'Opening {item["name"]} purchase...')
+        self._log(
+            f'[Shop] Opening purchase for "{item["name"]}": '
+            f"{amount} requested."
+        )
+        cancel_match = self._shop_open_purchase_modal(
+            hwnd,
+            item_match,
+            stop_event,
+        )
+        if cancel_match is None:
+            if not stop_event.is_set():
+                self._log(
+                    f'[Shop] "{item["name"]}" Buy is unavailable; '
+                    "leaving it for a later pass."
+                )
+            return
+        if not self._shop_configure_amount(
+                hwnd,
+                cancel_match,
+                target,
+                amount,
+                stop_event,
+        ):
+            self._shop_cancel_modal(hwnd, cancel_match)
+            return
+        if not self._shop_confirm_purchase(hwnd, cancel_match, stop_event):
+            if stop_event.is_set():
+                return
+            uncertain = auto_shop.normalize_item_state(state, period)
+            uncertain["status"] = auto_shop.STATUS_FAILED_TODAY
+            uncertain["verification"] = {"reason": "modal_did_not_close"}
+            self._shop_save_item_state(shop_key, item_key, uncertain)
+            self._log(
+                f'[Shop] "{item["name"]}" purchase could not be confirmed; '
+                "use Reset Today before retrying it."
+            )
+            return
+
+        completed = auto_shop.normalize_item_state(state, period)
+        completed["status"] = auto_shop.STATUS_COMPLETED
+        completed["verification"] = None
+        self._shop_save_item_state(shop_key, item_key, completed)
+        self._log(f'[Shop] "{item["name"]}" purchase executed today.')
 
     def _shop_process_item(
             self, hwnd, shop_key: str, item: dict,
@@ -774,11 +931,12 @@ class ShopOps:
             SHOP_KEY,
             auto_shop.fresh_shop_state(period),
         )
-        for item in due_items:
-            if self._checkpoint(stop_event):
-                return
-            self._set_status(action=f'Checking {item["name"]}...')
-            self._shop_process_item(hwnd, SHOP_KEY, item, stop_event)
+        self._shop_run_no_ocr_sweep(
+            hwnd,
+            SHOP_KEY,
+            due_items,
+            stop_event,
+        )
 
         if not stop_event.is_set():
             try:

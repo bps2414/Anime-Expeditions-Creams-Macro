@@ -33,14 +33,18 @@ The docked game uses the normalized 1152x756 reference viewport already used
 by `core.vision`. All card and button rectangles remain in that coordinate
 space, then existing coordinate conversion maps clicks to the actual window.
 
-The Gold Shop is treated as three verified list positions, not eleven separate
-scroll destinations:
+The Gold Shop is treated as one verified forward sweep. The live 1152x756
+capture shows one complete card row at a time, so a row is never considered
+actionable merely because the next row's icon is partly visible:
 
-| Position | Fully actionable cards |
+| Row position | Fully actionable cards |
 | --- | --- |
-| Top | Cursed Boba, Red Flower, Frown Fruit, Delicious Pie |
-| Middle | Mana Flask, Trait Crystal, Sprite (Grey), Equipment Reroll |
-| Bottom | Equipment Lock, Stat Reroll, Stat Lock |
+| Top | Cursed Boba, Red Flower |
+| Row 2 | Frown Fruit, Delicious Pie |
+| Row 3 | Mana Flask, Trait Crystal |
+| Row 4 | Sprite (Grey), Equipment Reroll |
+| Row 5 | Equipment Lock, Stat Reroll |
+| Absolute bottom | Stat Lock |
 
 Every entry has a fixed card slot within its verified position. A slot holds:
 
@@ -63,20 +67,15 @@ new manual screenshots are optional, not a prerequisite.
 
 1. Navigate to Areas, Shop, Gold Shop, tilt the camera, press E, and select
    the Gold Shop tab as today.
-2. Reset the item list upward once. Confirm the top position with one or two
-   top sentinel identities before processing any card.
-3. Process enabled Top cards in slot order.
-4. Move down in bounded pulses. After each pulse, examine only the fixed list
-   viewport and accept the Middle position only when its sentinel identities
-   match their slots.
-5. Process enabled Middle cards in slot order.
-6. Move down in bounded pulses while inspecting the list scrollbar handle.
-   The absolute bottom is reached only when the handle's lower edge rests at
-   the lower end of its rail; it does not rely on a precomputed wheel count
-   or a full-frame pixel comparison affected by card animation.
-7. Confirm the Bottom sentinels and require the Stat Lock Buy region to be
-   fully visible before processing Bottom cards.
-8. Process Equipment Lock, Stat Reroll, then Stat Lock.
+2. Reset the item list upward once. Confirm the top position with a top
+   sentinel identity before processing any card.
+3. Process enabled cards in catalog order. For each next card, search only
+   inside the Gold Shop list viewport; when its Buy region is clipped, advance
+   by short bounded pulses until the whole control is visible.
+4. The list never returns to the top during the sweep.
+5. Before Stat Lock, force a large downward scroll that reaches the physical
+   end across the known list range. Confirm its identity and require its Buy
+   region to be fully visible before processing it.
 
 Stat Lock has a stricter bottom rule than the other items. Its card identity
 alone is insufficient: the list must be at its physical end and its complete
@@ -105,8 +104,8 @@ For each enabled, identity-confirmed slot:
 5. Treat disappearance of Cancel after the final Buy as success and persist a
    one-time executed-today state. Do not reread the card or scan stock.
 6. If Cancel remains, click the required far-right point inside Cancel and
-   mark the action uncertain. It must not receive another automatic Buy click
-   in the same UTC day without a user reset.
+   mark the item Failed Today with a Reset Today action. It must not receive
+   another automatic Buy click in the same UTC day without a user reset.
 
 A non-green Buy rectangle without a terminal label is not interpreted as Out
 of Stock. It can mean insufficient Gold or an unexpected render. The item is
@@ -127,11 +126,12 @@ dangerous retry in the current shop visit.
 
 ## Expected performance
 
-The common nine-item run should use three layout alignments, a maximum of
-three list transitions, and one modal interaction per enabled purchasable
-item. It should be dominated by Roblox's modal animation rather than visual
-search or OCR. The target is roughly 20 to 40 seconds for a full enabled
-store, subject to Roblox rendering and input latency.
+The common nine-item run should use one reset, short forward adjustments only
+when a row is clipped, one forced-bottom action for Stat Lock, and one modal
+interaction per enabled purchasable item. It should be dominated by Roblox's
+modal animation rather than visual search or OCR. The target is roughly 20 to
+40 seconds for a full enabled store, subject to Roblox rendering and input
+latency.
 
 ## Implementation boundaries
 
