@@ -67,15 +67,6 @@ _TERMINAL_ITEM_STATUSES = {
 }
 
 
-def _shop_buy_green_mask(blue, green, red):
-    """Return the saturated green pixels used by enabled Gold Shop buttons."""
-    return (
-        (green > 135)
-        & (green - red > 45)
-        & (green - blue > 70)
-    )
-
-
 class ShopOps:
     def _auto_shop_settings(self) -> dict:
         if self._get_auto_shop_settings is None:
@@ -364,14 +355,8 @@ class ShopOps:
     def _shop_open_purchase_modal(
             self, hwnd, item_match: dict, stop_event: threading.Event):
         region = auto_shop_vision.initial_buy_region_from_item_match(item_match)
-        buy_match = vision.find_color_run(
-            hwnd,
-            region,
-            _shop_buy_green_mask,
-            min_run=70,
-            min_height=12,
-        )
-        if buy_match is None:
+        buy_crop = vision.capture_game_bgr(hwnd, region)
+        if not auto_shop_vision.buy_button_is_enabled(buy_crop):
             if stop_event.is_set():
                 return None
             self._log(
@@ -379,6 +364,15 @@ class ShopOps:
                 "no purchase was attempted."
             )
             return None
+        x, y, width, height = region
+        buy_match = {
+            "x": x,
+            "y": y,
+            "w": width,
+            "h": height,
+            "cx": x + width // 2,
+            "cy": y + height // 2,
+        }
         vision.click_match(self._mouse, hwnd, buy_match)
         try:
             cancel_match = vision.wait_for_image(

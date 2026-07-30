@@ -36,6 +36,7 @@ MODAL_UNKNOWN = "unknown"
 
 _OCR_CONFIG = "--psm 7 -c tessedit_char_whitelist=0123456789"
 _OCR_SHARPEN_AMOUNTS = (0.0, 1.5)
+BUY_BUTTON_GREEN_MIN_FRACTION = 0.06
 
 
 def stock_region_from_item_match(match: Mapping) -> tuple:
@@ -104,6 +105,22 @@ def crop_region(frame_bgr: np.ndarray, region: tuple) -> np.ndarray:
     if x < 0 or y < 0 or x + width > frame_width or y + height > frame_height:
         raise ValueError("Stock region falls outside the captured frame")
     return frame_bgr[y:y + height, x:x + width].copy()
+
+
+def buy_button_is_enabled(crop_bgr: np.ndarray) -> bool:
+    """Classify a known Buy rectangle by its total saturated-green coverage."""
+    if crop_bgr is None or crop_bgr.size == 0:
+        return False
+    if crop_bgr.ndim != 3 or crop_bgr.shape[2] < 3:
+        raise ValueError("Buy button crop must be a BGR image")
+    pixels = crop_bgr[:, :, :3].astype(np.int16)
+    blue, green, red = (pixels[:, :, index] for index in range(3))
+    green_mask = (
+        (green > 135)
+        & (green - red > 45)
+        & (green - blue > 70)
+    )
+    return float(green_mask.mean()) >= BUY_BUTTON_GREEN_MIN_FRACTION
 
 
 def _region_from_cancel(cancel_match: Mapping, relative_region: tuple) -> tuple:

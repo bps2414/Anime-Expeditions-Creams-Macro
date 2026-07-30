@@ -1,6 +1,7 @@
 import threading
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 from core import auto_shop
@@ -268,12 +269,15 @@ def test_open_modal_clicks_the_green_buy_region_without_matching_a_price(monkeyp
     """Price artwork must not decide whether a known card Buy can be clicked."""
     runner = _runner([])
     item_match = {"x": 429, "y": 245, "w": 61, "h": 55}
-    green_buy = {"x": 403, "y": 378, "w": 128, "h": 34, "cx": 467, "cy": 395}
     cancel = {"x": 579, "y": 420, "w": 181, "h": 28}
     clicked = []
     monkeypatch.setattr(
+        "core.runner_shop.vision.capture_game_bgr",
+        lambda *_args, **_kwargs: np.full((43, 142, 3), (0, 255, 70), dtype=np.uint8),
+    )
+    monkeypatch.setattr(
         "core.runner_shop.vision.find_color_run",
-        lambda *_args, **_kwargs: green_buy,
+        lambda *_args, **_kwargs: pytest.fail("Text must not break a total-color check"),
     )
     monkeypatch.setattr(
         "core.runner_shop.vision.wait_for_image",
@@ -287,7 +291,9 @@ def test_open_modal_clicks_the_green_buy_region_without_matching_a_price(monkeyp
     )
 
     assert runner._shop_open_purchase_modal(1, item_match, threading.Event()) == cancel
-    assert clicked == [green_buy]
+    assert clicked == [
+        {"x": 390, "y": 387, "w": 142, "h": 43, "cx": 461, "cy": 408},
+    ]
 
 
 def test_max_amount_clicks_the_modal_toggle_without_searching_max_or_min(monkeypatch):

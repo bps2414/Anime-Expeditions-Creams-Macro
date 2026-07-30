@@ -1,6 +1,7 @@
 import threading
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 from core import auto_shop
@@ -293,7 +294,7 @@ def test_purchase_modal_clicks_the_green_buy_region_inside_the_item_card(monkeyp
     runner = _runner()
     stop_event = threading.Event()
     item_match = {"x": 429, "y": 245, "w": 61, "h": 55}
-    buy_match = {"x": 410, "y": 380, "w": 24, "h": 14, "cx": 422, "cy": 387}
+    buy_match = {"x": 390, "y": 387, "w": 142, "h": 43, "cx": 461, "cy": 408}
     cancel_match = {"x": 579, "y": 420, "w": 181, "h": 28}
     clicked = []
     monkeypatch.setattr(
@@ -301,8 +302,8 @@ def test_purchase_modal_clicks_the_green_buy_region_inside_the_item_card(monkeyp
         lambda _mouse, _hwnd, match: clicked.append(match),
     )
     monkeypatch.setattr(
-        "core.runner_shop.vision.find_color_run",
-        lambda *_args, **_kwargs: buy_match,
+        "core.runner_shop.vision.capture_game_bgr",
+        lambda *_args, **_kwargs: np.full((43, 142, 3), (0, 255, 70), dtype=np.uint8),
     )
     monkeypatch.setattr(
         "core.runner_shop.vision.wait_for_image",
@@ -321,7 +322,7 @@ def test_purchase_modal_waits_only_for_cancel_after_clicking_green_buy(monkeypat
     runner = _runner()
     stop_event = threading.Event()
     item_match = {"x": 429, "y": 245, "w": 61, "h": 55}
-    buy_match = {"x": 410, "y": 380, "w": 116, "h": 33, "cx": 468, "cy": 396}
+    buy_match = {"x": 390, "y": 387, "w": 142, "h": 43, "cx": 461, "cy": 408}
     cancel_match = {"x": 579, "y": 420, "w": 181, "h": 28}
     waited = []
     clicked = []
@@ -332,7 +333,10 @@ def test_purchase_modal_waits_only_for_cancel_after_clicking_green_buy(monkeypat
             return cancel_match
         return None
 
-    monkeypatch.setattr("core.runner_shop.vision.find_color_run", lambda *_args, **_kwargs: buy_match)
+    monkeypatch.setattr(
+        "core.runner_shop.vision.capture_game_bgr",
+        lambda *_args, **_kwargs: np.full((43, 142, 3), (0, 255, 70), dtype=np.uint8),
+    )
     monkeypatch.setattr(
         "core.runner_shop.vision.wait_for_image",
         wait_for_image,

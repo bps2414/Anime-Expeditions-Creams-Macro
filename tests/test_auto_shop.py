@@ -81,6 +81,47 @@ def test_every_item_icon_matches_its_real_scrolled_shop_reference():
             )
 
 
+def test_buy_color_classifier_accepts_text_interrupted_green_buttons():
+    """Price glyphs must not make an enabled green button look disabled."""
+    cases = (
+        ("gold_shop_top.png", "cursed_boba"),
+        ("gold_shop_top.png", "red_flower"),
+        ("gold_shop_middle.png", "mana_flask"),
+        ("gold_shop_middle.png", "trait_crystal"),
+        ("gold_shop_bottom.png", "equipment_lock"),
+        ("gold_shop_bottom.png", "stat_reroll"),
+    )
+    for filename, item_key in cases:
+        frame = cv2.imread(str(AUTO_SHOP_REFERENCES / filename))
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        match = vision.find_in_gray_multiscale(
+            gray,
+            auto_shop.item_definition(item_key)["template"],
+        )
+        region = auto_shop_vision.initial_buy_region_from_item_match(match)
+        crop = auto_shop_vision.crop_region(frame, region)
+
+        assert auto_shop_vision.buy_button_is_enabled(crop), (
+            f"{item_key} active Buy was rejected"
+        )
+
+
+def test_buy_color_classifier_rejects_out_of_stock_gray_buttons():
+    frame = cv2.imread(
+        str(AUTO_SHOP_REFERENCES / "gold_shop_out_of_stock_full.png")
+    )
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    for item_key in ("cursed_boba", "red_flower"):
+        match = vision.find_in_gray_multiscale(
+            gray,
+            auto_shop.item_definition(item_key)["template"],
+        )
+        region = auto_shop_vision.initial_buy_region_from_item_match(match)
+        crop = auto_shop_vision.crop_region(frame, region)
+
+        assert not auto_shop_vision.buy_button_is_enabled(crop)
+
+
 def test_auto_shop_uses_the_same_utc_midnight_reset_as_challenge():
     import main
 
