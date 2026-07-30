@@ -20,6 +20,7 @@ SHOP_MODAL_CLOSE_TIMEOUT = 5.0
 SHOP_SCROLL_AMOUNT = -120
 SHOP_SCROLL_ATTEMPTS = 8
 SHOP_LIST_CENTER = (545, 410)
+SHOP_LIST_VIEWPORT = (398, 218, 308, 362)
 SHOP_SETTLE_DELAY = 0.6
 SHOP_CAPTURE_INTERVAL = 0.12
 
@@ -80,6 +81,17 @@ class ShopOps:
     def _shop_state_period(state: dict) -> str:
         return str((state or {}).get("period") or auto_shop.current_auto_shop_period())
 
+    @staticmethod
+    def _shop_region_is_visible(region: tuple) -> bool:
+        x, y, width, height = region
+        view_x, view_y, view_width, view_height = SHOP_LIST_VIEWPORT
+        return (
+            x >= view_x
+            and y >= view_y
+            and x + width <= view_x + view_width
+            and y + height <= view_y + view_height
+        )
+
     def _shop_find_item(
             self, hwnd, item: dict, stop_event: threading.Event):
         template = auto_shop.item_definition(item["key"])["template"]
@@ -92,7 +104,12 @@ class ShopOps:
                 self._log(f"[Shop] {exc}")
                 return None
             if match is not None:
-                return match
+                stock_region = auto_shop_vision.stock_status_region_from_item_match(match)
+                buy_region = auto_shop_vision.initial_buy_region_from_item_match(match)
+                if (
+                        self._shop_region_is_visible(stock_region)
+                        and self._shop_region_is_visible(buy_region)):
+                    return match
             if attempt == SHOP_SCROLL_ATTEMPTS:
                 break
             x, y = vision.ref_to_screen(hwnd, *SHOP_LIST_CENTER)
@@ -151,15 +168,24 @@ class ShopOps:
     def _shop_open_purchase_modal(
             self, hwnd, item_match: dict, stop_event: threading.Event):
         region = auto_shop_vision.initial_buy_region_from_item_match(item_match)
-        x, y, width, height = region
-        screen_x, screen_y = vision.ref_to_screen(
-            hwnd,
-            x + width // 2,
-            y + height // 2,
-        )
-        self._mouse.click(screen_x, screen_y)
         try:
-            return vision.wait_for_image(
+            buy_match = vision.find_image(
+                hwnd,
+                auto_shop.AUTO_SHOP_UI_TEMPLATES["buy"],
+                region=region,
+            )
+        except vision.TemplateNotFound as exc:
+            self._log(f"[Shop] {exc}")
+            return None
+        if buy_match is None:
+            self._log(
+                "[Shop] The enabled Buy button was not detected inside "
+                "the visible item card."
+            )
+            return None
+        vision.click_match(self._mouse, hwnd, buy_match)
+        try:
+            cancel_match = vision.wait_for_image(
                 hwnd,
                 auto_shop.AUTO_SHOP_UI_TEMPLATES["cancel"],
                 timeout=SHOP_MODAL_TIMEOUT,
@@ -168,6 +194,12 @@ class ShopOps:
         except vision.TemplateNotFound as exc:
             self._log(f"[Shop] {exc}")
             return None
+        if cancel_match is None and not self._checkpoint(stop_event):
+            self._log(
+                "[Shop] Buy was clicked, but the purchase modal did not open; "
+                "the button may be disabled by insufficient Gold."
+            )
+        return cancel_match
 
     def _shop_configure_amount(
             self, hwnd, cancel_match: dict, target, amount: int,
@@ -374,8 +406,7 @@ class ShopOps:
         )
         if cancel_match is None:
             self._log(
-                f'[Shop] "{item["name"]}" purchase modal did not open '
-                "(the Buy button may be disabled by insufficient Gold)."
+                f'[Shop] "{item["name"]}" purchase was not started safely.'
             )
             self._shop_save_item_state(
                 shop_key,

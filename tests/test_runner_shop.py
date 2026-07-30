@@ -131,7 +131,7 @@ def test_item_search_refinds_after_every_scroll(monkeypatch):
     runner = _runner()
     stop_event = threading.Event()
     item = _settings()["shops"]["gold_shop"]["items"][0]
-    expected = {"x": 429, "y": 445, "w": 61, "h": 55}
+    expected = {"x": 429, "y": 325, "w": 61, "h": 55}
     matches = iter([None, None, expected])
     monkeypatch.setattr(runner, "_checkpoint", lambda _stop: False)
     monkeypatch.setattr(
@@ -150,6 +150,58 @@ def test_item_search_refinds_after_every_scroll(monkeypatch):
         call.args == (-120,)
         for call in runner._mouse.scroll.call_args_list
     )
+
+
+def test_item_search_keeps_scrolling_until_the_buy_button_is_visible(monkeypatch):
+    runner = _runner()
+    stop_event = threading.Event()
+    item = _settings()["shops"]["gold_shop"]["items"][0]
+    icon_only = {"x": 429, "y": 445, "w": 61, "h": 55}
+    fully_visible = {"x": 429, "y": 325, "w": 61, "h": 55}
+    matches = iter([icon_only, fully_visible])
+    monkeypatch.setattr(runner, "_checkpoint", lambda _stop: False)
+    monkeypatch.setattr(
+        "core.runner_shop.vision.find_image",
+        lambda *_args, **_kwargs: next(matches),
+    )
+    monkeypatch.setattr(
+        "core.runner_shop.vision.ref_to_screen",
+        lambda _hwnd, x, y: (x, y),
+    )
+    monkeypatch.setattr("core.runner_shop.time.sleep", lambda _seconds: None)
+
+    assert runner._shop_find_item(1, item, stop_event) == fully_visible
+    runner._mouse.scroll.assert_called_once_with(-120)
+
+
+def test_purchase_modal_clicks_the_buy_template_inside_the_item_region(monkeypatch):
+    runner = _runner()
+    stop_event = threading.Event()
+    item_match = {"x": 429, "y": 245, "w": 61, "h": 55}
+    buy_match = {"x": 410, "y": 380, "w": 24, "h": 14, "cx": 422, "cy": 387}
+    cancel_match = {"x": 579, "y": 420, "w": 181, "h": 28}
+    clicked = []
+    monkeypatch.setattr(
+        "core.runner_shop.vision.find_image",
+        lambda _hwnd, name, **_kwargs: (
+            buy_match if name == "shop_buy" else None
+        ),
+    )
+    monkeypatch.setattr(
+        "core.runner_shop.vision.click_match",
+        lambda _mouse, _hwnd, match: clicked.append(match),
+    )
+    monkeypatch.setattr(
+        "core.runner_shop.vision.wait_for_image",
+        lambda *_args, **_kwargs: cancel_match,
+    )
+
+    assert runner._shop_open_purchase_modal(
+        1,
+        item_match,
+        stop_event,
+    ) == cancel_match
+    assert clicked == [buy_match]
 
 
 def test_final_buy_that_does_not_close_is_cancelled_at_the_right_edge(monkeypatch):
