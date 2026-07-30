@@ -178,15 +178,15 @@ def test_known_item_scroll_steps_match_the_observed_shop_rows():
     assert runner_shop.SHOP_ITEM_SCROLL_AMOUNTS == {
         "cursed_boba": 0,
         "red_flower": 0,
-        "frown_fruit": -480,
-        "delicious_pie": -480,
+        "frown_fruit": -120,
+        "delicious_pie": -120,
         "mana_flask": -480,
         "trait_crystal": -480,
         "sprite_grey": -720,
         "equipment_reroll": -720,
         "equipment_lock": -960,
         "stat_reroll": -960,
-        "stat_lock": -960,
+        "stat_lock": -4800,
     }
 
 

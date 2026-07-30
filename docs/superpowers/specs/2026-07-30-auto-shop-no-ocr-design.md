@@ -36,18 +36,19 @@ The docked game uses the normalized 1152x756 reference viewport already used
 by `core.vision`. All card and button rectangles remain in that coordinate
 space, then existing coordinate conversion maps clicks to the actual window.
 
-The Gold Shop is treated as one verified forward sweep. The live 1152x756
-capture shows one complete card row at a time, so a row is never considered
-actionable merely because the next row's icon is partly visible:
+The Gold Shop is treated as six deterministic positions in the normalized
+1152x756 viewport. Each due position first resets to Top and then applies one
+calibrated wheel delta. A failed identity check never causes additional search
+scrolling:
 
-| Row position | Fully actionable cards |
-| --- | --- |
-| Top | Cursed Boba, Red Flower |
-| Row 2 | Frown Fruit, Delicious Pie |
-| Row 3 | Mana Flask, Trait Crystal |
-| Row 4 | Sprite (Grey), Equipment Reroll |
-| Row 5 | Equipment Lock, Stat Reroll |
-| Absolute bottom | Stat Lock |
+| Position | Scroll from Top | Fully actionable cards |
+| --- | ---: | --- |
+| Top | 0 | Cursed Boba, Red Flower |
+| Row 2 | -120 | Frown Fruit, Delicious Pie |
+| Row 3 | -480 | Mana Flask, Trait Crystal |
+| Row 4 | -720 | Sprite (Grey), Equipment Reroll |
+| Row 5 | -960 | Equipment Lock, Stat Reroll |
+| Absolute bottom | -4800 | Stat Lock |
 
 Every entry has a fixed card slot within its verified position. A slot holds:
 
@@ -70,15 +71,14 @@ new manual screenshots are optional, not a prerequisite.
 
 1. Navigate to Areas, Shop, Gold Shop, tilt the camera, press E, and select
    the Gold Shop tab as today.
-2. Reset the item list upward once. Confirm the top position with a top
-   sentinel identity before processing any card.
-3. Process enabled cards in catalog order. For each next card, search only
-   inside the Gold Shop list viewport; when its Buy region is clipped, advance
-   by short bounded pulses until the whole control is visible.
-4. The list never returns to the top during the sweep.
-5. Before Stat Lock, force a large downward scroll that reaches the physical
-   end across the known list range. Confirm its identity and require its Buy
-   region to be fully visible before processing it.
+2. For each position containing a due item, reset the list upward and apply
+   exactly the position's mapped wheel delta.
+3. Search each item only inside its fixed left or right column. Require the
+   derived Buy and terminal regions to be fully visible before processing it.
+4. If an expected item is absent, skip it without issuing any additional
+   scroll. Continue from a fresh Top reset for the next due position.
+5. Stat Lock always uses the absolute-bottom delta. Confirm its identity in
+   the left slot and require its Buy region to be fully visible.
 
 Stat Lock has a stricter bottom rule than the other items. Its card identity
 alone is insufficient: the list must be at its physical end and its complete
@@ -123,7 +123,8 @@ dangerous retry in the current shop visit.
   remains limited to one confirmed purchase per UTC period.
 - An ambiguous card identity, scroll position, button state, or modal state
   always results in no Buy click.
-- The macro does not reset the list to the top between cards.
+- The macro resets to Top before every due position and never searches by
+  repeatedly scrolling after a failed identity check.
 - Buy coordinates are valid only for the current verified slot and are never
   carried across a scroll.
 - Disabled Buy, missing modal, and unknown layout states never become an
@@ -131,17 +132,16 @@ dangerous retry in the current shop visit.
 
 ## Expected performance
 
-The common nine-item run should use one reset, short forward adjustments only
-when a row is clipped, one forced-bottom action for Stat Lock, and one modal
-interaction per enabled purchasable item. It should be dominated by Roblox's
-modal animation rather than visual search or OCR. The target is roughly 20 to
-40 seconds for a full enabled store, subject to Roblox rendering and input
-latency.
+The common nine-item run uses at most one Top reset plus one mapped wheel delta
+per due position and one modal interaction per purchasable item. It has no
+search-scroll loop, so missing items add no repeated delays. Runtime should be
+dominated by Roblox's modal animation rather than visual search or OCR.
 
 ## Implementation boundaries
 
-- `core/runner_shop.py` becomes a session-oriented sweep rather than calling
-  an item finder that resets and scrolls for every item.
+- `core/runner_shop.py` owns the fixed position and column manifest. It resets
+  once per due position and performs only the mapped scroll before validating
+  the current card slots.
 - `core/auto_shop_vision.py` owns fixed slot geometry, masked identity checks,
   green-button classification, viewport-change detection, and modal-relative
   geometry.

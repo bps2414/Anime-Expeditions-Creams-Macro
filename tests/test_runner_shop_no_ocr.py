@@ -115,47 +115,59 @@ def test_visible_item_lookup_does_not_scroll_when_the_card_is_clipped(monkeypatc
     runner._mouse.scroll.assert_not_called()
 
 
-def test_stat_lock_row_alignment_forces_bottom_before_searching(monkeypatch):
-    """Stat Lock must not be clicked from a partially scrolled Bottom view."""
+def test_item_lookup_is_restricted_to_its_expected_column(monkeypatch):
     runner = _runner([])
-    item = {
-        **_item(),
-        "key": "stat_lock",
-        "name": "Stat Lock",
-        "daily_maximum": 10,
-    }
-    events = []
-    runner._mouse.scroll.side_effect = lambda amount: events.append(("scroll", amount))
+    regions = []
     monkeypatch.setattr(runner, "_checkpoint", lambda _stop: False)
-    monkeypatch.setattr(
-        "core.runner_shop.vision.find_image",
-        lambda *_args, **_kwargs: events.append(("find", None)) or {
+
+    def find_image(_hwnd, _template, **kwargs):
+        regions.append(kwargs["region"])
+        return {
             "x": 429, "y": 325, "w": 61, "h": 55,
-        },
-    )
-    monkeypatch.setattr(
-        "core.runner_shop.vision.ref_to_screen",
-        lambda _hwnd, x, y: (x, y),
-    )
-    monkeypatch.setattr("core.runner_shop.time.sleep", lambda _seconds: None)
+        }
 
-    assert runner._shop_align_visible_row(
+    monkeypatch.setattr("core.runner_shop.vision.find_image", find_image)
+
+    runner._shop_find_visible_item(
         1,
-        [item],
+        {
+            **_item(),
+            "key": "equipment_lock",
+            "name": "Equipment Lock",
+            "daily_maximum": 10,
+        },
         threading.Event(),
-        force_bottom=True,
     )
-    assert events[0] == ("scroll", runner_shop.SHOP_BOTTOM_SCROLL_AMOUNT)
-    assert events[-1] == ("find", None)
+    runner._shop_find_visible_item(
+        1,
+        {
+            **_item(),
+            "key": "stat_reroll",
+            "name": "Stat Reroll",
+            "daily_maximum": 10,
+        },
+        threading.Event(),
+    )
+
+    assert regions == [
+        (398, 218, 154, 362),
+        (552, 218, 154, 362),
+    ]
 
 
-def test_no_ocr_sweep_resets_once_then_keeps_a_single_forward_item_order(monkeypatch):
-    """The sweep must not call the legacy reset-per-item finder."""
+def test_no_ocr_sweep_uses_absolute_scroll_position_for_each_due_row(monkeypatch):
+    """Every due row must start from Top and use only its calibrated delta."""
     runner = _runner([])
     items = [
         {**_item(), "key": "stat_lock", "name": "Stat Lock", "daily_maximum": 10},
+        {
+            **_item(),
+            "key": "equipment_lock",
+            "name": "Equipment Lock",
+            "daily_maximum": 10,
+        },
+        {**_item(), "key": "mana_flask", "name": "Mana Flask", "daily_maximum": 150},
         {**_item(), "key": "frown_fruit", "name": "Frown Fruit", "daily_maximum": 100},
-        _item(),
     ]
     found = []
     processed = []
@@ -163,11 +175,6 @@ def test_no_ocr_sweep_resets_once_then_keeps_a_single_forward_item_order(monkeyp
         side_effect=AssertionError("The legacy finder resets the list per item")
     )
     monkeypatch.setattr(runner, "_checkpoint", lambda _stop: False)
-    monkeypatch.setattr(
-        runner,
-        "_shop_align_visible_row",
-        lambda *_args, **_kwargs: True,
-    )
     monkeypatch.setattr(
         runner,
         "_shop_find_visible_item",
@@ -188,49 +195,38 @@ def test_no_ocr_sweep_resets_once_then_keeps_a_single_forward_item_order(monkeyp
 
     runner._shop_run_no_ocr_sweep(1, "gold_shop", items, threading.Event())
 
-    assert found == ["cursed_boba", "frown_fruit", "stat_lock"]
+    assert found == [
+        "frown_fruit",
+        "mana_flask",
+        "equipment_lock",
+        "stat_lock",
+    ]
     assert processed == found
     assert [call.args for call in runner._mouse.scroll.call_args_list] == [
         (runner_shop.SHOP_SCROLL_RESET_AMOUNT,),
+        (-120,),
+        (runner_shop.SHOP_SCROLL_RESET_AMOUNT,),
+        (-480,),
+        (runner_shop.SHOP_SCROLL_RESET_AMOUNT,),
+        (-960,),
+        (runner_shop.SHOP_SCROLL_RESET_AMOUNT,),
+        (runner_shop.SHOP_BOTTOM_SCROLL_AMOUNT,),
     ]
 
 
-def test_failed_item_match_does_not_scroll_past_the_following_row(monkeypatch):
-    """One missing card must not consume the scroll budget for later cards."""
+def test_missing_top_row_never_triggers_search_scrolling(monkeypatch):
+    """A failed identity check must skip the row without moving toward Bottom."""
     runner = _runner([])
     items = [
         _item(),
         {**_item(), "key": "red_flower", "name": "Red Flower", "daily_maximum": 75},
-        {**_item(), "key": "frown_fruit", "name": "Frown Fruit", "daily_maximum": 100},
-        {
-            **_item(),
-            "key": "delicious_pie",
-            "name": "Delicious Pie",
-            "daily_maximum": 125,
-        },
     ]
-    row = 0
     processed = []
-
-    def scroll(amount):
-        nonlocal row
-        row = 0 if amount > 0 else min(5, row + 1)
-
-    visible_rows = {
-        "shop_cursed_boba": 0,
-        "shop_red_flower": None,
-        "shop_frown_fruit": 1,
-        "shop_delicious_pie": 1,
-    }
-
-    def find_image(_hwnd, template, **_kwargs):
-        if visible_rows[template] != row:
-            return None
-        return {"x": 429, "y": 325, "w": 61, "h": 55, "cx": 459, "cy": 352}
-
-    runner._mouse.scroll.side_effect = scroll
     monkeypatch.setattr(runner, "_checkpoint", lambda _stop: False)
-    monkeypatch.setattr("core.runner_shop.vision.find_image", find_image)
+    monkeypatch.setattr(
+        "core.runner_shop.vision.find_image",
+        lambda *_args, **_kwargs: None,
+    )
     monkeypatch.setattr(
         runner,
         "_shop_process_visible_item",
@@ -244,8 +240,10 @@ def test_failed_item_match_does_not_scroll_past_the_following_row(monkeypatch):
 
     runner._shop_run_no_ocr_sweep(1, "gold_shop", items, threading.Event())
 
-    assert processed == ["cursed_boba", "frown_fruit", "delicious_pie"]
-    assert row == 1
+    assert processed == []
+    assert [call.args for call in runner._mouse.scroll.call_args_list] == [
+        (runner_shop.SHOP_SCROLL_RESET_AMOUNT,),
+    ]
 
 
 def test_auto_shop_run_delegates_enabled_items_to_the_no_ocr_sweep(monkeypatch):

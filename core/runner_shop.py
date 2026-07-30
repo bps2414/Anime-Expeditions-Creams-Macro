@@ -23,11 +23,12 @@ SHOP_SCROLL_AMOUNT = -480
 SHOP_SCROLL_REFINEMENT_AMOUNT = -120
 SHOP_SCROLL_RESET_AMOUNT = 2400
 SHOP_ITEM_SEARCH_TIMEOUT = 3.0
-SHOP_FORWARD_SCROLL_AMOUNT = -120
 SHOP_BOTTOM_SCROLL_AMOUNT = -4800
-SHOP_VISIBLE_ITEM_SCROLL_ATTEMPTS = 8
 SHOP_LIST_CENTER = (545, 410)
-SHOP_LIST_VIEWPORT = (398, 218, 308, 362)
+SHOP_LIST_SLOT_VIEWPORTS = {
+    "left": (398, 218, 154, 362),
+    "right": (552, 218, 154, 362),
+}
 SHOP_LIST_ACTION_VIEWPORT = (390, 218, 316, 362)
 SHOP_SETTLE_DELAY = 0.6
 SHOP_LIST_SETTLE_DELAY = 0.3
@@ -48,23 +49,36 @@ SHOP_ITEM_SCROLL_STEPS = {
 SHOP_ITEM_SCROLL_AMOUNTS = {
     "cursed_boba": 0,
     "red_flower": 0,
-    "frown_fruit": -480,
-    "delicious_pie": -480,
+    "frown_fruit": -120,
+    "delicious_pie": -120,
     "mana_flask": -480,
     "trait_crystal": -480,
     "sprite_grey": -720,
     "equipment_reroll": -720,
     "equipment_lock": -960,
     "stat_reroll": -960,
-    "stat_lock": -960,
+    "stat_lock": -4800,
 }
-SHOP_SWEEP_ROWS = (
-    ("cursed_boba", "red_flower"),
-    ("frown_fruit", "delicious_pie"),
-    ("mana_flask", "trait_crystal"),
-    ("sprite_grey", "equipment_reroll"),
-    ("equipment_lock", "stat_reroll"),
-    ("stat_lock",),
+SHOP_ITEM_COLUMNS = {
+    "cursed_boba": "left",
+    "red_flower": "right",
+    "frown_fruit": "left",
+    "delicious_pie": "right",
+    "mana_flask": "left",
+    "trait_crystal": "right",
+    "sprite_grey": "left",
+    "equipment_reroll": "right",
+    "equipment_lock": "left",
+    "stat_reroll": "right",
+    "stat_lock": "left",
+}
+SHOP_SWEEP_POSITIONS = (
+    (0, ("cursed_boba", "red_flower")),
+    (-120, ("frown_fruit", "delicious_pie")),
+    (-480, ("mana_flask", "trait_crystal")),
+    (-720, ("sprite_grey", "equipment_reroll")),
+    (-960, ("equipment_lock", "stat_reroll")),
+    (SHOP_BOTTOM_SCROLL_AMOUNT, ("stat_lock",)),
 )
 
 _TERMINAL_ITEM_STATUSES = {
@@ -210,11 +224,12 @@ class ShopOps:
         if self._checkpoint(stop_event):
             return None
         template = auto_shop.item_definition(item["key"])["template"]
+        column = SHOP_ITEM_COLUMNS[item["key"]]
         try:
             match = vision.find_image(
                 hwnd,
                 template,
-                region=SHOP_LIST_VIEWPORT,
+                region=SHOP_LIST_SLOT_VIEWPORTS[column],
             )
         except vision.TemplateNotFound as exc:
             self._log(f"[Shop] {exc}")
@@ -229,46 +244,30 @@ class ShopOps:
             return match
         return None
 
-    def _shop_align_visible_row(
-            self, hwnd, row_items: list, stop_event: threading.Event,
-            force_bottom: bool = False) -> bool:
-        """Move the list as one row while checking every stable row anchor."""
-        x, y = vision.ref_to_screen(hwnd, *SHOP_LIST_CENTER)
-        self._mouse.move_to(x, y)
-        self._mouse.nudge()
-        if force_bottom:
-            self._mouse.scroll(SHOP_BOTTOM_SCROLL_AMOUNT)
-            time.sleep(SHOP_LIST_SETTLE_DELAY)
-
-        for attempt in range(SHOP_VISIBLE_ITEM_SCROLL_ATTEMPTS):
-            if self._checkpoint(stop_event):
-                return False
-            if any(
-                    self._shop_find_visible_item(hwnd, item, stop_event)
-                    is not None
-                    for item in row_items):
-                return True
-            if attempt + 1 >= SHOP_VISIBLE_ITEM_SCROLL_ATTEMPTS:
-                break
-            x, y = vision.ref_to_screen(hwnd, *SHOP_LIST_CENTER)
-            self._mouse.move_to(x, y)
-            self._mouse.nudge()
-            self._mouse.scroll(SHOP_FORWARD_SCROLL_AMOUNT)
-            time.sleep(SHOP_LIST_SETTLE_DELAY)
-        return False
-
-    def _shop_run_no_ocr_sweep(
-            self, hwnd, shop_key: str, items: list,
-            stop_event: threading.Event) -> None:
-        """Process enabled Gold Shop cards in one top-to-bottom list sweep."""
+    def _shop_move_to_scroll_position(
+            self, hwnd, scroll_amount: int,
+            stop_event: threading.Event) -> bool:
+        """Reset to Top, then apply one calibrated absolute scroll delta."""
+        if self._checkpoint(stop_event):
+            return False
         x, y = vision.ref_to_screen(hwnd, *SHOP_LIST_CENTER)
         self._mouse.move_to(x, y)
         self._mouse.nudge()
         self._mouse.scroll(SHOP_SCROLL_RESET_AMOUNT)
         time.sleep(SHOP_LIST_SETTLE_DELAY)
+        if scroll_amount:
+            if self._checkpoint(stop_event):
+                return False
+            self._mouse.scroll(scroll_amount)
+            time.sleep(SHOP_LIST_SETTLE_DELAY)
+        return not self._checkpoint(stop_event)
 
+    def _shop_run_no_ocr_sweep(
+            self, hwnd, shop_key: str, items: list,
+            stop_event: threading.Event) -> None:
+        """Process each enabled row from its calibrated absolute position."""
         due_by_key = {item["key"]: item for item in items}
-        for row_keys in SHOP_SWEEP_ROWS:
+        for scroll_amount, row_keys in SHOP_SWEEP_POSITIONS:
             row_items = [
                 due_by_key[item_key]
                 for item_key in row_keys
@@ -276,21 +275,14 @@ class ShopOps:
             ]
             if not row_items:
                 continue
-            row_anchors = [
-                auto_shop.item_definition(item_key)
-                for item_key in row_keys
-            ]
-            if not self._shop_align_visible_row(
-                    hwnd,
-                    row_anchors,
-                    stop_event,
-                    force_bottom=row_keys == ("stat_lock",)):
-                names = ", ".join(item["name"] for item in row_items)
-                self._log(
-                    f"[Shop] The row containing {names} could not be "
-                    "aligned safely."
-                )
-                continue
+            names = ", ".join(item["name"] for item in row_items)
+            self._log(
+                f"[Shop] Positioning {names}: reset Top, "
+                f"then scroll {scroll_amount}."
+            )
+            if not self._shop_move_to_scroll_position(
+                    hwnd, scroll_amount, stop_event):
+                return
 
             for item in row_items:
                 if self._checkpoint(stop_event):
@@ -299,8 +291,8 @@ class ShopOps:
                 match = self._shop_find_visible_item(hwnd, item, stop_event)
                 if match is None:
                     self._log(
-                        f'[Shop] "{item["name"]}" was not found in its '
-                        "aligned shop row."
+                        f'[Shop] "{item["name"]}" was not found at its '
+                        f"calibrated scroll position ({scroll_amount})."
                     )
                     continue
                 self._shop_process_visible_item(
