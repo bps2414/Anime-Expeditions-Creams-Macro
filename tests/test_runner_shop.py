@@ -2,6 +2,7 @@ import threading
 from unittest.mock import MagicMock
 
 from core import auto_shop
+from core import runner_shop
 from core.runner import MacroRunner
 
 
@@ -127,7 +128,8 @@ def test_cancel_click_uses_the_far_right_inside_edge(monkeypatch):
     runner._mouse.click.assert_called_once_with(754, 434)
 
 
-def test_item_search_refinds_after_every_scroll(monkeypatch):
+def test_item_search_waits_through_transient_misses_at_the_expected_row(
+        monkeypatch):
     runner = _runner()
     stop_event = threading.Event()
     item = _settings()["shops"]["gold_shop"]["items"][0]
@@ -145,11 +147,64 @@ def test_item_search_refinds_after_every_scroll(monkeypatch):
     monkeypatch.setattr("core.runner_shop.time.sleep", lambda _seconds: None)
 
     assert runner._shop_find_item(1, item, stop_event) == expected
-    assert runner._mouse.scroll.call_count == 2
-    assert all(
-        call.args == (-120,)
+    assert [
+        call.args
         for call in runner._mouse.scroll.call_args_list
+    ] == [(runner_shop.SHOP_SCROLL_RESET_AMOUNT,)]
+
+
+def test_known_item_scroll_steps_match_the_observed_shop_rows():
+    assert runner_shop.SHOP_ITEM_SCROLL_STEPS == {
+        "cursed_boba": 0,
+        "red_flower": 0,
+        "frown_fruit": 1,
+        "delicious_pie": 1,
+        "mana_flask": 1,
+        "trait_crystal": 1,
+        "sprite_grey": 2,
+        "equipment_reroll": 2,
+        "equipment_lock": 3,
+        "stat_reroll": 3,
+        "stat_lock": 4,
+    }
+
+
+def test_item_search_resets_to_top_then_waits_at_the_known_row(monkeypatch):
+    settings = _settings({
+        "cursed_boba": {"enabled": False},
+        "mana_flask": {"enabled": True},
+    })
+    runner = _runner(settings)
+    stop_event = threading.Event()
+    item = next(
+        entry
+        for entry in settings["shops"]["gold_shop"]["items"]
+        if entry["key"] == "mana_flask"
     )
+    expected = {"x": 438, "y": 345, "w": 57, "h": 61}
+    monkeypatch.setattr(runner, "_checkpoint", lambda _stop: False)
+    monkeypatch.setattr(
+        "core.runner_shop.vision.find_image",
+        lambda *_args, **_kwargs: expected,
+    )
+    monkeypatch.setattr(
+        "core.runner_shop.vision.wait_for_image",
+        lambda *_args, **_kwargs: expected,
+    )
+    monkeypatch.setattr(
+        "core.runner_shop.vision.ref_to_screen",
+        lambda _hwnd, x, y: (x, y),
+    )
+    monkeypatch.setattr("core.runner_shop.time.sleep", lambda _seconds: None)
+
+    assert runner._shop_find_item(1, item, stop_event) == expected
+    assert [
+        call.args
+        for call in runner._mouse.scroll.call_args_list
+    ] == [
+        (runner_shop.SHOP_SCROLL_RESET_AMOUNT,),
+        (-120,),
+    ]
 
 
 def test_item_search_keeps_scrolling_until_the_buy_button_is_visible(monkeypatch):
@@ -171,7 +226,13 @@ def test_item_search_keeps_scrolling_until_the_buy_button_is_visible(monkeypatch
     monkeypatch.setattr("core.runner_shop.time.sleep", lambda _seconds: None)
 
     assert runner._shop_find_item(1, item, stop_event) == fully_visible
-    runner._mouse.scroll.assert_called_once_with(-120)
+    assert [
+        call.args
+        for call in runner._mouse.scroll.call_args_list
+    ] == [
+        (runner_shop.SHOP_SCROLL_RESET_AMOUNT,),
+        (-120,),
+    ]
 
 
 def test_purchase_modal_clicks_the_buy_template_inside_the_item_region(monkeypatch):
@@ -303,12 +364,17 @@ def test_confirmed_numeric_purchase_marks_completed_without_a_second_buy(monkeyp
     )
     monkeypatch.setattr(runner, "_shop_configure_amount", lambda *_args: True)
     monkeypatch.setattr(runner, "_shop_confirm_purchase", lambda *_args: True)
+    runner._log = MagicMock()
 
     runner._shop_process_item(1, "gold_shop", item, stop_event)
 
     assert saved[-1][2]["status"] == auto_shop.STATUS_COMPLETED
     assert saved[-1][2]["last_known_left"] == 45
     assert saved[-1][2]["verification"] is None
+    messages = [call.args[0] for call in runner._log.call_args_list]
+    assert any("Reading stock" in message for message in messages)
+    assert any("Opening purchase" in message for message in messages)
+    assert any("re-reading stock" in message for message in messages)
 
 
 def test_gold_shop_navigation_waits_for_teleport_before_camera_and_interaction(

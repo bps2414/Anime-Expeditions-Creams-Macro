@@ -18,11 +18,25 @@ SHOP_OPEN_TIMEOUT = 10.0
 SHOP_MODAL_TIMEOUT = 4.0
 SHOP_MODAL_CLOSE_TIMEOUT = 5.0
 SHOP_SCROLL_AMOUNT = -120
-SHOP_SCROLL_ATTEMPTS = 8
+SHOP_SCROLL_RESET_AMOUNT = 1200
+SHOP_ITEM_SEARCH_TIMEOUT = 3.0
 SHOP_LIST_CENTER = (545, 410)
 SHOP_LIST_VIEWPORT = (398, 218, 308, 362)
 SHOP_SETTLE_DELAY = 0.6
 SHOP_CAPTURE_INTERVAL = 0.12
+SHOP_ITEM_SCROLL_STEPS = {
+    "cursed_boba": 0,
+    "red_flower": 0,
+    "frown_fruit": 1,
+    "delicious_pie": 1,
+    "mana_flask": 1,
+    "trait_crystal": 1,
+    "sprite_grey": 2,
+    "equipment_reroll": 2,
+    "equipment_lock": 3,
+    "stat_reroll": 3,
+    "stat_lock": 4,
+}
 
 _TERMINAL_ITEM_STATUSES = {
     auto_shop.STATUS_COMPLETED,
@@ -95,11 +109,54 @@ class ShopOps:
     def _shop_find_item(
             self, hwnd, item: dict, stop_event: threading.Event):
         template = auto_shop.item_definition(item["key"])["template"]
-        for attempt in range(SHOP_SCROLL_ATTEMPTS + 1):
+        target_step = SHOP_ITEM_SCROLL_STEPS[item["key"]]
+        self._log(
+            f'[Shop] Locating "{item["name"]}" at scroll step '
+            f"{target_step}..."
+        )
+        x, y = vision.ref_to_screen(hwnd, *SHOP_LIST_CENTER)
+        self._mouse.move_to(x, y)
+        self._mouse.nudge()
+        self._mouse.scroll(SHOP_SCROLL_RESET_AMOUNT)
+        time.sleep(SHOP_SETTLE_DELAY)
+        for _ in range(target_step):
             if self._checkpoint(stop_event):
                 return None
+            self._mouse.scroll(SHOP_SCROLL_AMOUNT)
+            time.sleep(SHOP_SETTLE_DELAY)
+        if self._checkpoint(stop_event):
+            return None
+        try:
+            match = vision.wait_for_image(
+                hwnd,
+                template,
+                timeout=SHOP_ITEM_SEARCH_TIMEOUT,
+                stop_event=stop_event,
+            )
+        except vision.TemplateNotFound as exc:
+            self._log(f"[Shop] {exc}")
+            return None
+        if match is not None:
+            stock_region = auto_shop_vision.stock_status_region_from_item_match(match)
+            buy_region = auto_shop_vision.initial_buy_region_from_item_match(match)
+            if (
+                    self._shop_region_is_visible(stock_region)
+                    and self._shop_region_is_visible(buy_region)):
+                return match
+
+            self._log(
+                f'[Shop] "{item["name"]}" is visible but its controls are '
+                "clipped; scrolling one more step..."
+            )
+            self._mouse.scroll(SHOP_SCROLL_AMOUNT)
+            time.sleep(SHOP_SETTLE_DELAY)
             try:
-                match = vision.find_image(hwnd, template)
+                match = vision.wait_for_image(
+                    hwnd,
+                    template,
+                    timeout=SHOP_ITEM_SEARCH_TIMEOUT,
+                    stop_event=stop_event,
+                )
             except vision.TemplateNotFound as exc:
                 self._log(f"[Shop] {exc}")
                 return None
@@ -110,14 +167,10 @@ class ShopOps:
                         self._shop_region_is_visible(stock_region)
                         and self._shop_region_is_visible(buy_region)):
                     return match
-            if attempt == SHOP_SCROLL_ATTEMPTS:
-                break
-            x, y = vision.ref_to_screen(hwnd, *SHOP_LIST_CENTER)
-            self._mouse.move_to(x, y)
-            self._mouse.nudge()
-            self._mouse.scroll(SHOP_SCROLL_AMOUNT)
-            time.sleep(SHOP_SETTLE_DELAY)
-        self._log(f'[Shop] "{item["name"]}" was not found after scrolling the full list.')
+        self._log(
+            f'[Shop] "{item["name"]}" was not found at its expected '
+            f"scroll step ({target_step})."
+        )
         return None
 
     def _shop_read_observation(
@@ -359,13 +412,30 @@ class ShopOps:
             )
             return
 
+        self._set_status(action=f'Reading {item["name"]} stock...')
+        self._log(f'[Shop] Reading stock for "{item["name"]}"...')
         observation = self._shop_read_observation(
             hwnd,
             item,
             match,
             stop_event,
         )
+        if observation.get("out_of_stock"):
+            self._log(f'[Shop] "{item["name"]}" is out of stock.')
+        elif observation.get("left") is not None:
+            self._log(
+                f'[Shop] "{item["name"]}" stock confirmed: '
+                f'{observation["left"]} left.'
+            )
+        else:
+            self._log(
+                f'[Shop] OCR could not confirm "{item["name"]}" stock.'
+            )
         if state["status"] == auto_shop.STATUS_PENDING_VERIFICATION:
+            self._set_status(action=f'Verifying {item["name"]}...')
+            self._log(
+                f'[Shop] Verifying the previous "{item["name"]}" purchase...'
+            )
             state, resolved = self._shop_verify_pending(item, state, observation)
             self._shop_save_item_state(shop_key, item_key, state)
             if not resolved or state["status"] != auto_shop.STATUS_PENDING:
@@ -399,6 +469,11 @@ class ShopOps:
             )
             return
 
+        self._set_status(action=f'Opening {item["name"]} purchase...')
+        self._log(
+            f'[Shop] Opening purchase for "{item["name"]}": '
+            f'{plan["pending_amount"]} requested.'
+        )
         cancel_match = self._shop_open_purchase_modal(
             hwnd,
             match,
@@ -448,6 +523,11 @@ class ShopOps:
                 )
             return
 
+        self._set_status(action=f'Verifying {item["name"]} purchase...')
+        self._log(
+            f'[Shop] Purchase submitted for "{item["name"]}"; '
+            "re-reading stock..."
+        )
         refreshed_match = self._shop_find_item(hwnd, item, stop_event)
         if refreshed_match is None:
             return
