@@ -146,6 +146,10 @@ def test_item_search_refinds_after_every_scroll(monkeypatch):
 
     assert runner._shop_find_item(1, item, stop_event) == expected
     assert runner._mouse.scroll.call_count == 2
+    assert all(
+        call.args == (-120,)
+        for call in runner._mouse.scroll.call_args_list
+    )
 
 
 def test_final_buy_that_does_not_close_is_cancelled_at_the_right_edge(monkeypatch):
